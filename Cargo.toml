@@ -1,0 +1,16 @@
+[package]
+name = "vera"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+slint = "1.16.1"
+indexmap = "2.14.0"       # Preserves exiv2's natural tag ordering (insertion order)
+webbrowser = "1.2.1"      # For opening Google Maps
+
+
+[build-dependencies]
+slint-build = "1.16.1"
+
+# [env]
+# SLINT_BACKEND = "winit-software"

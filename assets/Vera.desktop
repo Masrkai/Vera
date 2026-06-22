@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Vera
+Comment=View, edit, and strip EXIF metadata from photos
+Exec=EXEC
+Icon=Vera
+Type=Application
+Terminal=false
+StartupWMClass=vera

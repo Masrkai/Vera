@@ -1,0 +1,222 @@
+import { Button, LineEdit, CheckBox, ListView, VerticalBox } from "std-widgets.slint";
+
+export struct ExifRow {
+    tag: string,
+    value: string,
+    is-common: bool,
+}
+
+export component ExifDataManager inherits Window {
+    title: "Vera";
+    preferred-width: 950px;
+    preferred-height: 750px;
+    default-font-size: 14px;
+
+    // --- Properties set from Python ---
+    in-out property <string> current-file-name: "";
+    in-out property <image>  preview-source;
+    in-out property <bool>   has-gps: false;
+    in-out property <bool>   preserve-original: false;
+    in-out property <bool>   batch-preserve-original: false;
+    in-out property <float>  batch-progress: 0.0;
+    in-out property <string> status-message: "Ready";
+    in-out property <[ExifRow]>  exif-model;
+    in-out property <[string]>   batch-model;
+    in-out property <[string]>   batch-status-model;
+    in property <length> min-font-size: 14px;
+
+    // --- Callbacks handled in Python ---
+    callback request-open-image();
+    callback request-open-images();
+    callback load-image(string);
+    callback clear-batch-list();
+    callback start-batch-process();
+    callback open-gps-location();
+    callback save-exif-changes();
+    callback delete-exif();
+    callback apply-filter(string);
+    callback exif-value-edited(int, string);
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 6px;
+
+        // ── Single image section ──────────────────────────────────────
+        HorizontalLayout {
+            spacing: 12px;
+
+            // FIX 1: Image preview that actually renders preview-source
+            Rectangle {
+                width: 260px;
+                height: 180px;
+                border-width: 1px;
+                border-color: #bbb;
+                border-radius: 4px;
+                clip: true;
+                background: #f0f0f0;
+
+                Image {
+                    source: root.preview-source;
+                    width: parent.width;
+                    height: parent.height;
+                    image-fit: contain;
+                }
+
+                if root.current-file-name == "": Text {
+                    text: "No image loaded";
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                    width: parent.width;
+                    height: parent.height;
+                    color: #999;
+                    font-size: max(root.min-font-size, 12px);
+                }
+            }
+
+            VerticalLayout {
+                spacing: 6px;
+                vertical-stretch: 1;
+
+                Text { text: "Single Image"; font-weight: 700; }
+                Text {
+                    text: root.current-file-name == "" ? "No file selected" : root.current-file-name;
+                    overflow: elide;
+                }
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    Button { text: "Open Image"; clicked => { root.request-open-image(); } }
+                    Button {
+                        text: "Open GPS Location";
+                        enabled: root.has-gps;
+                        clicked => { root.open-gps-location(); }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    CheckBox { text: "Preserve original"; checked <=> root.preserve-original; }
+                    Button   { text: "Delete EXIF"; clicked => { root.delete-exif(); } }
+                }
+            }
+        }
+
+        // ── Batch section ─────────────────────────────────────────────
+        Text { text: "Batch Processing"; font-weight: 700; }
+
+        HorizontalLayout {
+            spacing: 6px;
+            Button { text: "Add Images";  clicked => { root.request-open-images(); } }
+            Button { text: "Clear List";  clicked => { root.clear-batch-list(); } }
+            Button { text: "Start Batch"; clicked => { root.start-batch-process(); } }
+        }
+
+        CheckBox { text: "Preserve originals"; checked <=> root.batch-preserve-original; }
+
+        Text { text: "Queue:"; }
+
+        // FIX 3: clip + constrained width on list items
+        ListView {
+            height: 80px;
+            for item in root.batch-model: Rectangle {
+                height: 22px;
+                width: parent.width;
+                clip: true;
+                Text { text: item; vertical-alignment: center; overflow: elide; width: parent.width; }
+            }
+        }
+
+        Text { text: "Results:"; }
+
+        ListView {
+            height: 60px;
+            for item in root.batch-status-model: Rectangle {
+                height: 22px;
+                width: parent.width;
+                clip: true;
+                Text { text: item; vertical-alignment: center; overflow: elide; width: parent.width; }
+            }
+        }
+
+        // ── EXIF table ────────────────────────────────────────────────
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: "EXIF Data";
+                font-weight: 700;
+                vertical-alignment: center;
+            }
+            LineEdit {
+                placeholder-text: "Filter tags…";
+                edited(text) => { root.apply-filter(text); }
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: "Save Changes";
+                clicked => { root.save-exif-changes(); }
+            }
+        }
+
+        // FIX 2 + 3: LineEdit for editing, clip to prevent overflow
+        Rectangle {
+            clip: true;
+            vertical-stretch: 1;
+
+            ListView {
+                for row[idx] in root.exif-model: HorizontalLayout {
+                    height: 28px;
+                    spacing: 8px;
+                    padding-left: 4px;
+                    padding-right: 4px;
+
+                    // Tag column — fixed width, clipped
+                    Rectangle {
+                        width: 180px;
+                        clip: true;
+                        Text {
+                            text: row.tag;
+                            font-weight: row.is-common ? 700 : 400;
+                            vertical-alignment: center;
+                            width: parent.width;
+                            overflow: elide;
+                        }
+                    }
+
+                    // Value column — editable, stretches, clipped
+                    Rectangle {
+                        clip: true;
+                        horizontal-stretch: 1;
+
+                        LineEdit {
+                            text: row.value;
+                            edited(new-text) => {
+                                root.exif-value-edited(idx, new-text);
+                            }
+                            width: parent.width;
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Status bar ────────────────────────────────────────────────
+        HorizontalLayout {
+            spacing: 8px;
+            height: 20px;
+            Text { text: root.status-message; vertical-alignment: center; font-size: max(root.min-font-size, 11px); }
+
+            if root.batch-progress > 0.0 && root.batch-progress < 1.0: Rectangle {
+                height: 14px;
+                background: #e0e0e0;
+                border-radius: 7px;
+                Rectangle {
+                    x: 0;
+                    width: parent.width * root.batch-progress;
+                    height: parent.height;
+                    background: #4a90d9;
+                    border-radius: 7px;
+                }
+            }
+        }
+    }
+}

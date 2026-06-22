@@ -1,0 +1,29 @@
+<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="plateGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#14B8A6"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="url(#plateGrad)"/>
+
+  <!-- eye -->
+  <path d="M44,128 Q128,76 212,128 Q128,180 44,128 Z"
+        fill="none" stroke="#F0FBFC" stroke-width="13" stroke-linejoin="round"/>
+  <circle cx="128" cy="128" r="19" fill="#0B2540"/>
+
+  <!-- stop hand -->
+  <g transform="translate(172,176) rotate(-25)" fill="#F0FBFC">
+
+    # biggest object (balm)
+    <rect x="-26" y="-6" width="52" height="46" rx="16"/>
+
+    #
+    <rect x="-24" y="-46" width="10" height="42" rx="5"/>
+    <rect x="-11" y="-52" width="10" height="48" rx="5"/>
+    <rect x="2" y="-49" width="10" height="45" rx="5"/>
+    <rect x="15" y="-40" width="9" height="36" rx="4.5"/>
+    <rect x="-39" y="4" width="11" height="30" rx="5.5" transform="rotate(-26 10)"/>
+  </g>
+</svg>
