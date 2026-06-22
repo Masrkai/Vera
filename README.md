@@ -111,6 +111,47 @@ Privacy is a fundamental human right, not a privilege for those with "something 
 
 ## Getting Started
 
-Ready to take control of your image privacy? Check out the installation guide (comming soon) and start protecting your digital footprint today.
+### Prerequisites
+
+Ensure you have [Rust](https://www.rust-lang.org/tools/install) and [Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) installed on your system.
+
+### Build from Source
+
+#### 1. Clone the Repository
+
+```bash
+git clone https://github.com/Masrkai/Vera.git
+cd Vera
+```
+
+#### 2. Environment Setup (Optional)
+
+If you are using **NixOS**, enter the provided development shell to ensure all dependencies are met:
+
+```bash
+nix-shell
+```
+
+*If you are not using NixOS, you can skip this step.*
+
+#### 3. Build the Project
+
+Compile the project in release mode for optimal performance:
+
+```bash
+cargo build --release
+```
+
+#### 4. Run Vera
+
+Once the build is complete, you can launch the application using the following command:
+
+```bash
+RUST_BACKTRACE=full SLINT_BACKEND=winit-software ./target/release/vera
+```
+
+### Desktop Installation
+
+A packaged desktop installer is currently in development and will be released soon. Please check back later for updates.
 
 *Remember: Your privacy is your responsibility. Don't leave it to chance.*
