@@ -5,12 +5,15 @@ edition = "2024"
 
 [dependencies]
 slint = "1.17.0"
-indexmap = "2.14.0"       # Preserves exiv2's natural tag ordering (insertion order)
-webbrowser = "1.2.1"      # For opening Google Maps
+indexmap = "2.14.0"     # Preserves exiv2's natural tag ordering (insertion order)
+webbrowser = "1.2.1"    # For opening Google Maps
+image = { version = "0.25.10", default-features = false, features = [
+    "jpeg",
+    "png",
+    "tiff",
+    "bmp",
+] }                     # Decode + downscale preview thumbnails (avoids holding full-res bitmaps in memory)
 
 
 [build-dependencies]
 slint-build = "1.17.0"
-
-# [env]
-# SLINT_BACKEND = "winit-software"

@@ -6,7 +6,7 @@
 
 ### Logic
 
-- [ ] Clicking "open image" while another image is already open seems to increase memory usage drastically.
+- [x] Clicking "open image" while another image is already open seems to increase memory usage drastically.
 
 ### Bundle & Build
 
