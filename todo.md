@@ -10,7 +10,7 @@
 
 ### Bundle & Build
 
-- [ ] Using the GUI without the `SLINT_BACKEND=winit-software cargo run` flag makes the GUI render using OpenGL, which consumes much more memory.
+- [x] Using the GUI without the `SLINT_BACKEND=winit-software cargo run` flag makes the GUI render using OpenGL, which consumes much more memory.
 - [ ] The Slint package in Cargo is extremely dense; building requires compiling around `674` packages using `cargo build --release`.
 - [ ] Ship the application properly on Linux using freedesktop.org standards (app icon and `.desktop` file).
     - [x] NixOS
