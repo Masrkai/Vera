@@ -13,8 +13,13 @@
 - [ ] Using the GUI without the `SLINT_BACKEND=winit-software cargo run` flag makes the GUI render using OpenGL, which consumes much more memory.
 - [ ] The Slint package in Cargo is extremely dense; building requires compiling around `674` packages using `cargo build --release`.
 - [ ] Ship the application properly on Linux using freedesktop.org standards (app icon and `.desktop` file).
+    - [x] NixOS
+    - [ ] Standard Linux Desktop
 
 ## Future List
 
 - [ ] Add an option to view locations using ESRI satellite imagery.
-- [ ] Add logic for more forensic analysis.
+- [ ] Add logic for more forensic analysis. (this will be the most huge ask or a separate project entirely)
+    - [ ] Add patterns for Encrypting and Decrypting a message from an image.
+        - [ ] Frequency Wise
+        - [ ] Pixel Wise
