@@ -17,17 +17,10 @@ pkgs.mkShell {
     expat           # Required by fontconfig
 
     # --- Windowing & UI Dependencies ---
+    libGL
     wayland
     libxkbcommon
 
-    libX11
-    libXcursor
-    libXi
-    libXrandr
-
-    libGL
-
-    kdePackages.kdialog
     zenity
   ];
 
@@ -40,9 +33,6 @@ pkgs.mkShell {
       freetype
       expat
       libxkbcommon
-      libX11
-      libXext
-      libXrender
       glib
       dbus
       zstd

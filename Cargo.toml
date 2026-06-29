@@ -4,16 +4,21 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-slint = "1.17.0"
-indexmap = "2.14.0"     # Preserves exiv2's natural tag ordering (insertion order)
-webbrowser = "1.2.1"    # For opening Google Maps
+slint = { version = "1.17.0", default-features = false, features = [
+    "std",
+    "compat-1-2",             # Mandatory — compile error if missing
+    "renderer-software",      # CPU renderer, no GPU/OpenGL needed
+    "backend-winit-wayland",  # Wayland ONLY (no X11)
+    # "renderer-femtovg",     # For GPU/OpenGL rendering
+] }
+indexmap = "2.14.0"
+webbrowser = "1.2.1"
 image = { version = "0.25.10", default-features = false, features = [
     "jpeg",
     "png",
     "tiff",
     "bmp",
-] }                     # Decode + downscale preview thumbnails (avoids holding full-res bitmaps in memory)
-
+] }
 
 [build-dependencies]
-slint-build = "1.17.0"
+slint-build = { version = "1.17.0", default-features = true }
