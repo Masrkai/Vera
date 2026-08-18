@@ -4,15 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-slint = { version = "1.17.0", default-features = false, features = [
+slint = { version = "1.17.1", default-features = false, features = [
     "std",
     "compat-1-2",             # Mandatory — compile error if missing
     "renderer-software",      # CPU renderer, no GPU/OpenGL needed
     "backend-winit-wayland",  # Wayland ONLY (no X11)
-    # "renderer-femtovg",     # For GPU/OpenGL rendering
 ] }
 indexmap = "2.14.0"
-webbrowser = "1.2.1"
+webbrowser = "1.2.4"
 image = { version = "0.25.10", default-features = false, features = [
     "jpeg",
     "png",
@@ -21,4 +20,4 @@ image = { version = "0.25.10", default-features = false, features = [
 ] }
 
 [build-dependencies]
-slint-build = { version = "1.17.0", default-features = true }
+slint-build = { version = "1.17.1", default-features = true }
