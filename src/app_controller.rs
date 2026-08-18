@@ -193,7 +193,7 @@ impl ExifBridge {
     }
 
     // ── Single image ───────────────────────────────────────────────────
-    fn load_image(this: &Arc<Mutex<Self>>, path: String) {
+    pub fn load_image(this: &Arc<Mutex<Self>>, path: String) {
         let mut guard = this.lock().unwrap();
         if path.is_empty() || !Path::new(&path).exists() {
             guard.set_status("Invalid or missing file path");
