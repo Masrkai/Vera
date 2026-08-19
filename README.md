@@ -8,7 +8,7 @@
 **A simple tool for protecting your privacy**
 
 *Project initialized on July 14, 2025, by @Masrkai*
-> Note: this repo doesn't reflect the date because it was rebased alot previously it was named as `EXIF-Dumper` and was wriiten in python see [here](./docs/chouce.md) the iterations i had to go through to get to this point
+> Note: this repo doesn't reflect the date because it was rebased alot previously it was named as `EXIF-Dumper` and was wriiten in python see [here](./docs/choice.md) the iterations i had to go through to get to this point
 
 ---
 
