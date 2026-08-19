@@ -116,6 +116,12 @@ impl ExifBridge {
         }
         {
             let b = bridge.clone();
+            ui.on_open_esri_satellite(move || {
+                b.lock().unwrap().open_esri_satellite();
+            });
+        }
+        {
+            let b = bridge.clone();
             ui.on_save_exif_changes(move || {
                 ExifBridge::save_exif_changes(&b);
             });
@@ -420,6 +426,30 @@ impl ExifBridge {
             Ok(data) => {
                 if let Some((lat, lon)) = GPSConverter::parse_exif_gps(&data) {
                     let url = GPSConverter::create_google_maps_url(lat, lon);
+                    let _ = webbrowser::open(&url);
+                }
+            }
+            Err(e) => self.set_status(&format!("GPS Error: {}", e)),
+        }
+    }
+
+    fn open_esri_satellite(&self) {
+        if !self.ui().get_has_gps() || self.current_path.is_empty() {
+            return;
+        }
+
+        let processor = match EXIFProcessor::new(self.current_path.clone()) {
+            Ok(p) => p,
+            Err(e) => {
+                self.set_status(&format!("GPS Error: {}", e));
+                return;
+            }
+        };
+
+        match processor.extract() {
+            Ok(data) => {
+                if let Some((lat, lon)) = GPSConverter::parse_exif_gps(&data) {
+                    let url = GPSConverter::create_esri_satellite_url(lat, lon);
                     let _ = webbrowser::open(&url);
                 }
             }

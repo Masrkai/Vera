@@ -19,7 +19,7 @@
 ## Future List
 
 - [x] Add an XDG standard for opening image files through the options called "open with" then by selecting "vera" it opens the image directly!.
-- [ ] Add an option to view locations using ESRI satellite imagery.
+- [x] Add an option to view locations using ESRI satellite imagery.
 - [ ] Add logic for more forensic analysis. (this will be the most huge ask or a separate project entirely)
   - [ ] Add patterns for Encrypting and Decrypting a message from an image.
     - [ ] Frequency Wise

@@ -32,6 +32,7 @@ export component ExifDataManager inherits Window {
     callback clear-batch-list();
     callback start-batch-process();
     callback open-gps-location();
+    callback open-esri-satellite();
     callback save-exif-changes();
     callback delete-exif();
     callback apply-filter(string);
@@ -90,6 +91,11 @@ export component ExifDataManager inherits Window {
                         text: "Open GPS Location";
                         enabled: root.has-gps;
                         clicked => { root.open-gps-location(); }
+                    }
+                    Button {
+                        text: "ESRI Satellite";
+                        enabled: root.has-gps;
+                        clicked => { root.open-esri-satellite(); }
                     }
                 }
 

@@ -244,6 +244,15 @@ impl GPSConverter {
         )
     }
 
+    /// Create an ArcGIS Living Atlas Wayback URL showing ESRI World Imagery satellite
+    /// view centred on the given coordinates.
+    pub fn create_esri_satellite_url(latitude: f64, longitude: f64) -> String {
+        format!(
+            "https://livingatlas.arcgis.com/wayback/#mapCenter={:.6},{:.6},18",
+            longitude, latitude
+        )
+    }
+
     /// Get coordinates in all supported formats.
     pub fn get_all_formats(latitude: f64, longitude: f64) -> HashMap<String, String> {
         let mut result = HashMap::new();
