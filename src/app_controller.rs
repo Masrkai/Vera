@@ -12,9 +12,9 @@ use slint::{
 // Import the generated types from the root crate (main.rs)
 use crate::{ExifDataManager, ExifRow};
 
-use crate::processing::exiv2_backend::{ExifValue, EXIFProcessor};
+use crate::dialogs::{FileDialogResult, open_file_dialog};
+use crate::processing::exiv2_backend::{EXIFProcessor, ExifValue};
 use crate::processing::geo_utils::GPSConverter;
-use crate::dialogs::{open_file_dialog, FileDialogResult};
 
 // ── Preview thumbnail loading ───────────────────────────────────────────
 //
@@ -48,7 +48,8 @@ fn load_preview_thumbnail(path: &str) -> Image {
         .thumbnail(PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT)
         .to_rgba8();
     let (width, height) = thumbnail.dimensions();
-    let buffer = SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(thumbnail.as_raw(), width, height);
+    let buffer =
+        SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(thumbnail.as_raw(), width, height);
     Image::from_rgba8(buffer)
 }
 
@@ -141,7 +142,9 @@ impl ExifBridge {
         {
             let b = bridge.clone();
             ui.on_exif_value_edited(move |index, new_value| {
-                b.lock().unwrap().exif_value_edited(index as usize, new_value.to_string());
+                b.lock()
+                    .unwrap()
+                    .exif_value_edited(index as usize, new_value.to_string());
             });
         }
 
@@ -261,21 +264,29 @@ impl ExifBridge {
                         "Exif.Image.Orientation",
                     ]);
 
-                    let rows: Vec<ExifRow> = data.iter().map(|(tag, info)| {
-                        let mut val_str = info.value.replace('\0', "");
-                        const MAX_DISPLAY_LEN: usize = 300;
-                        if val_str.chars().count() > MAX_DISPLAY_LEN {
-                            let truncated: String = val_str.chars().take(MAX_DISPLAY_LEN).collect();
-                            val_str = format!("{truncated}… [{} more chars]", val_str.chars().count() - MAX_DISPLAY_LEN);
-                        }
+                    let rows: Vec<ExifRow> = data
+                        .iter()
+                        .map(|(tag, info)| {
+                            let mut val_str = info.value.replace('\0', "");
+                            const MAX_DISPLAY_LEN: usize = 300;
+                            if val_str.chars().count() > MAX_DISPLAY_LEN {
+                                let truncated: String =
+                                    val_str.chars().take(MAX_DISPLAY_LEN).collect();
+                                val_str = format!(
+                                    "{truncated}… [{} more chars]",
+                                    val_str.chars().count() - MAX_DISPLAY_LEN
+                                );
+                            }
 
-                        let is_common = common_tags.contains(tag.as_str()) || tag.starts_with("Exif.GPSInfo.");
-                        ExifRow {
-                            tag: tag.into(),
-                            value: val_str.into(),
-                            is_common,
-                        }
-                    }).collect();
+                            let is_common = common_tags.contains(tag.as_str())
+                                || tag.starts_with("Exif.GPSInfo.");
+                            ExifRow {
+                                tag: tag.into(),
+                                value: val_str.into(),
+                                is_common,
+                            }
+                        })
+                        .collect();
 
                     let coords = GPSConverter::parse_exif_gps(&data);
                     let has_gps = coords.is_some();
@@ -285,7 +296,9 @@ impl ExifBridge {
                     ExifBridge::run_on_ui_thread(move || {
                         let mut bridge = b2.lock().unwrap();
                         bridge.all_exif_rows = rows.clone();
-                        bridge.ui().set_exif_model(ModelRc::new(VecModel::from(rows)));
+                        bridge
+                            .ui()
+                            .set_exif_model(ModelRc::new(VecModel::from(rows)));
                         bridge.ui().set_has_gps(has_gps);
                         bridge.set_status(&format!("EXIF extracted ({}) tags", count));
                     });
@@ -309,18 +322,20 @@ impl ExifBridge {
     }
 
     fn overlay_edits(&self, rows: &[ExifRow]) -> Vec<ExifRow> {
-        rows.iter().map(|row| {
-            let tag = row.tag.to_string();
-            if let Some(edited_val) = self.exif_edits.get(&tag) {
-                ExifRow {
-                    tag: row.tag.clone(),
-                    value: edited_val.clone().into(),
-                    is_common: row.is_common,
+        rows.iter()
+            .map(|row| {
+                let tag = row.tag.to_string();
+                if let Some(edited_val) = self.exif_edits.get(&tag) {
+                    ExifRow {
+                        tag: row.tag.clone(),
+                        value: edited_val.clone().into(),
+                        is_common: row.is_common,
+                    }
+                } else {
+                    row.clone()
                 }
-            } else {
-                row.clone()
-            }
-        }).collect()
+            })
+            .collect()
     }
 
     fn save_exif_changes(this: &Arc<Mutex<Self>>) {
@@ -349,13 +364,16 @@ impl ExifBridge {
                 Err(e) => {
                     let err_msg = e.to_string();
                     ExifBridge::run_on_ui_thread(move || {
-                        b.lock().unwrap().set_status(&format!("Save error: {}", err_msg));
+                        b.lock()
+                            .unwrap()
+                            .set_status(&format!("Save error: {}", err_msg));
                     });
                     return;
                 }
             };
 
-            let exif_data: std::collections::HashMap<String, ExifValue> = edits.into_iter()
+            let exif_data: std::collections::HashMap<String, ExifValue> = edits
+                .into_iter()
                 .map(|(k, v)| (k, ExifValue::Plain(v)))
                 .collect();
 
@@ -383,7 +401,9 @@ impl ExifBridge {
                 Err(e) => {
                     let err_msg = e.to_string();
                     ExifBridge::run_on_ui_thread(move || {
-                        b.lock().unwrap().set_status(&format!("Save error: {}", err_msg));
+                        b.lock()
+                            .unwrap()
+                            .set_status(&format!("Save error: {}", err_msg));
                     });
                 }
             }
@@ -397,14 +417,20 @@ impl ExifBridge {
             self.ui().set_exif_model(ModelRc::new(VecModel::from(rows)));
         } else {
             let text_lower = text.to_lowercase();
-            let filtered: Vec<ExifRow> = self.all_exif_rows.iter().filter(|r| {
-                let tag = r.tag.to_string().to_lowercase();
-                let val = r.value.to_string().to_lowercase();
-                tag.contains(&text_lower) || val.contains(&text_lower)
-            }).cloned().collect();
+            let filtered: Vec<ExifRow> = self
+                .all_exif_rows
+                .iter()
+                .filter(|r| {
+                    let tag = r.tag.to_string().to_lowercase();
+                    let val = r.value.to_string().to_lowercase();
+                    tag.contains(&text_lower) || val.contains(&text_lower)
+                })
+                .cloned()
+                .collect();
 
             let overlayed = self.overlay_edits(&filtered);
-            self.ui().set_exif_model(ModelRc::new(VecModel::from(overlayed)));
+            self.ui()
+                .set_exif_model(ModelRc::new(VecModel::from(overlayed)));
         }
     }
 
@@ -502,7 +528,10 @@ impl ExifBridge {
     // ── Batch processing ───────────────────────────────────────────────
     fn add_batch_files(&mut self, file_paths: Vec<String>) {
         let batch_model = self.ui().get_batch_model();
-        if let Some(vec_model) = batch_model.as_any().downcast_ref::<VecModel<SharedString>>() {
+        if let Some(vec_model) = batch_model
+            .as_any()
+            .downcast_ref::<VecModel<SharedString>>()
+        {
             for path in file_paths {
                 if !path.is_empty() && !self.batch_files.contains(&path) {
                     self.batch_files.push(path.clone());
@@ -519,7 +548,8 @@ impl ExifBridge {
 
     fn clear_batch_list(&mut self) {
         self.batch_files.clear();
-        self.ui().set_batch_model(ModelRc::new(VecModel::<SharedString>::from(Vec::new())));
+        self.ui()
+            .set_batch_model(ModelRc::new(VecModel::<SharedString>::from(Vec::new())));
         self.set_status("Batch list cleared");
     }
 
@@ -530,7 +560,9 @@ impl ExifBridge {
             return;
         }
 
-        guard.ui().set_batch_status_model(ModelRc::new(VecModel::<SharedString>::from(Vec::new())));
+        guard
+            .ui()
+            .set_batch_status_model(ModelRc::new(VecModel::<SharedString>::from(Vec::new())));
         guard.ui().set_batch_progress(0.0);
         guard.set_status("Starting batch process...");
 
@@ -543,24 +575,22 @@ impl ExifBridge {
             let total = files.len();
             for (i, path) in files.iter().enumerate() {
                 let status_msg = match EXIFProcessor::new(path.clone()) {
-                    Ok(processor) => {
-                        match processor.delete(preserve) {
-                            Ok(_) => {
-                                let basename = Path::new(path)
-                                    .file_name()
-                                    .map(|n| n.to_string_lossy().to_string())
-                                    .unwrap_or_default();
-                                format!("({}/{}) {}: Deleted", i + 1, total, basename)
-                            }
-                            Err(e) => {
-                                let basename = Path::new(path)
-                                    .file_name()
-                                    .map(|n| n.to_string_lossy().to_string())
-                                    .unwrap_or_default();
-                                format!("({}/{}) {}: ERROR - {}", i + 1, total, basename, e)
-                            }
+                    Ok(processor) => match processor.delete(preserve) {
+                        Ok(_) => {
+                            let basename = Path::new(path)
+                                .file_name()
+                                .map(|n| n.to_string_lossy().to_string())
+                                .unwrap_or_default();
+                            format!("({}/{}) {}: Deleted", i + 1, total, basename)
                         }
-                    }
+                        Err(e) => {
+                            let basename = Path::new(path)
+                                .file_name()
+                                .map(|n| n.to_string_lossy().to_string())
+                                .unwrap_or_default();
+                            format!("({}/{}) {}: ERROR - {}", i + 1, total, basename, e)
+                        }
+                    },
                     Err(e) => {
                         let basename = Path::new(path)
                             .file_name()
@@ -575,7 +605,10 @@ impl ExifBridge {
                 ExifBridge::run_on_ui_thread(move || {
                     let bridge = b2.lock().unwrap();
                     let status_model = bridge.ui().get_batch_status_model();
-                    if let Some(vec_model) = status_model.as_any().downcast_ref::<VecModel<SharedString>>() {
+                    if let Some(vec_model) = status_model
+                        .as_any()
+                        .downcast_ref::<VecModel<SharedString>>()
+                    {
                         vec_model.push(status_msg.into());
                     }
                     bridge.ui().set_batch_progress(progress);
@@ -589,3 +622,4 @@ impl ExifBridge {
         });
     }
 }
+

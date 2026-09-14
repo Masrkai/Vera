@@ -16,9 +16,7 @@ impl GPSConverter {
     ///
     /// Returns:
     ///     Some((latitude, longitude)) in decimal degrees, or None if invalid
-    pub fn parse_exif_gps(
-        exif_data: &IndexMap<String, ExifTag>,
-    ) -> Option<(f64, f64)> {
+    pub fn parse_exif_gps(exif_data: &IndexMap<String, ExifTag>) -> Option<(f64, f64)> {
         if exif_data.is_empty() {
             return None;
         }
@@ -74,36 +72,91 @@ impl GPSConverter {
         }
     }
 
-    /// Convert an exiv2 raw GPS value to decimal degrees.
+    /// Convert an exiv2 GPS value to decimal degrees.
     ///
-    /// exiv2's raw (untranslated) GPS value for a 3-component Rational tag
-    /// comes back as a single space-separated string of fractions, e.g.
-    /// "43/1 28/1 2814/1000" for 43 deg 28' 2.814".
+    /// The single `exiv2 -pa` extraction can expose GPS coordinates in either
+    /// of these forms depending on the exiv2 version/tag implementation:
     ///
-    /// Args:
-    ///     dms_raw: the raw value string from exiv2
-    ///     ref: reference (N/S for latitude, E/W for longitude)
+    ///   43/1 28/1 2814/1000
+    ///   43 deg 28' 2.814"
+    ///   43°28'2.814"
     ///
-    /// Returns:
-    ///     Some(decimal degree value) or None if invalid
+    /// Accept all of them so the Open GPS Location and Esri Satellite actions
+    /// continue to work after moving to the single -pa extraction pass.
     fn dms_to_decimal(dms_raw: &str, ref_str: &str) -> Option<Option<f64>> {
-        let tokens: Vec<&str> = dms_raw.split_whitespace().collect();
-
-        if tokens.len() < 3 {
+        let raw = dms_raw.trim();
+        if raw.is_empty() {
             return None;
         }
 
-        let degrees = Self::parse_rational(tokens[0])?;
-        let minutes = Self::parse_rational(tokens[1])?;
-        let seconds = Self::parse_rational(tokens[2])?;
-
-        let mut decimal = degrees + (minutes / 60.0) + (seconds / 3600.0);
-
-        if ref_str.eq_ignore_ascii_case("S") || ref_str.eq_ignore_ascii_case("W") {
-            decimal = -decimal;
+        // First handle the original exiv2 rational representation exactly.
+        let tokens: Vec<&str> = raw.split_whitespace().collect();
+        if tokens.len() >= 3 {
+            if let (Some(degrees), Some(minutes), Some(seconds)) = (
+                Self::parse_rational(tokens[0]),
+                Self::parse_rational(tokens[1]),
+                Self::parse_rational(tokens[2]),
+            ) {
+                return Some(Some(Self::apply_gps_ref(
+                    degrees + (minutes / 60.0) + (seconds / 3600.0),
+                    ref_str,
+                )));
+            }
         }
 
-        Some(Some(decimal))
+        // Then handle translated DMS such as "43 deg 28' 2.814"".
+        let numbers = Self::extract_numbers(raw);
+
+        if numbers.len() >= 3 {
+            let decimal = numbers[0] + (numbers[1] / 60.0) + (numbers[2] / 3600.0);
+            return Some(Some(Self::apply_gps_ref(decimal, ref_str)));
+        }
+
+        // Finally accept a plain decimal-degree value if exiv2 supplies one.
+        if numbers.len() == 1 && !raw.contains('/') {
+            return Some(Some(Self::apply_gps_ref(numbers[0], ref_str)));
+        }
+
+        None
+    }
+
+    fn apply_gps_ref(decimal: f64, ref_str: &str) -> f64 {
+        if ref_str
+            .trim()
+            .chars()
+            .next()
+            .map(|c| matches!(c.to_ascii_uppercase(), 'S' | 'W'))
+            .unwrap_or(false)
+        {
+            -decimal.abs()
+        } else {
+            decimal.abs()
+        }
+    }
+
+    /// Extract decimal numbers from DMS text without requiring a regex crate.
+    fn extract_numbers(value: &str) -> Vec<f64> {
+        let mut numbers = Vec::new();
+        let mut current = String::new();
+
+        for ch in value.chars() {
+            if ch.is_ascii_digit() || ch == '.' || (ch == '-' && current.is_empty()) {
+                current.push(ch);
+            } else if !current.is_empty() {
+                if let Ok(number) = current.parse::<f64>() {
+                    numbers.push(number);
+                }
+                current.clear();
+            }
+        }
+
+        if !current.is_empty() {
+            if let Ok(number) = current.parse::<f64>() {
+                numbers.push(number);
+            }
+        }
+
+        numbers
     }
 
     /// Format coordinates as decimal degrees string,
@@ -182,11 +235,7 @@ impl GPSConverter {
     }
 
     /// Convert decimal degrees to geohash with explicit precision.
-    pub fn to_geohash_with_precision(
-        latitude: f64,
-        longitude: f64,
-        precision: usize,
-    ) -> String {
+    pub fn to_geohash_with_precision(latitude: f64, longitude: f64, precision: usize) -> String {
         let base32 = "0123456789bcdefghjkmnpqrstuvwxyz";
         let mut lat_range = [-90.0_f64, 90.0_f64];
         let mut lon_range = [-180.0_f64, 180.0_f64];
@@ -260,26 +309,11 @@ impl GPSConverter {
             "decimal_degrees".to_string(),
             Self::to_decimal_degrees(latitude, longitude),
         );
-        result.insert(
-            "dms".to_string(),
-            Self::to_dms(latitude, longitude),
-        );
-        result.insert(
-            "dmm".to_string(),
-            Self::to_dmm(latitude, longitude),
-        );
-        result.insert(
-            "utm".to_string(),
-            Self::to_utm(latitude, longitude),
-        );
-        result.insert(
-            "mgrs".to_string(),
-            Self::to_mgrs(latitude, longitude),
-        );
-        result.insert(
-            "geohash".to_string(),
-            Self::to_geohash(latitude, longitude),
-        );
+        result.insert("dms".to_string(), Self::to_dms(latitude, longitude));
+        result.insert("dmm".to_string(), Self::to_dmm(latitude, longitude));
+        result.insert("utm".to_string(), Self::to_utm(latitude, longitude));
+        result.insert("mgrs".to_string(), Self::to_mgrs(latitude, longitude));
+        result.insert("geohash".to_string(), Self::to_geohash(latitude, longitude));
         result.insert(
             "plus_code".to_string(),
             Self::to_plus_code(latitude, longitude),

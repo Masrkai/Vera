@@ -160,8 +160,7 @@ fn split_whitespace_max(s: &str, max_splits: usize) -> Vec<&str> {
         }
         if let Some(pos) = rest.find(|c: char| c.is_whitespace()) {
             result.push(&rest[..pos]);
-            rest = rest[pos..]
-                .trim_start_matches(|c: char| c.is_whitespace());
+            rest = rest[pos..].trim_start_matches(|c: char| c.is_whitespace());
         } else {
             result.push(rest);
             return result;
@@ -185,9 +184,7 @@ fn extract_warned_keys(stderr: &str) -> HashSet<String> {
     for line in stderr.lines() {
         if let Some(rest) = line.strip_prefix("Warning: ") {
             // Get the first whitespace-delimited token
-            let token_end = rest
-                .find(|c: char| c.is_whitespace())
-                .unwrap_or(rest.len());
+            let token_end = rest.find(|c: char| c.is_whitespace()).unwrap_or(rest.len());
             let token = &rest[..token_end];
             // Find the last colon in the token (greedy match like \S+:)
             if let Some(colon_pos) = token.rfind(':') {
@@ -230,12 +227,7 @@ impl EXIFProcessor {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
         if check && returncode != 0 {
-            return Err(format!(
-                "exiv2 exited with code {}: {}",
-                returncode,
-                stderr.trim()
-            )
-            .into());
+            return Err(format!("exiv2 exited with code {}: {}", returncode, stderr.trim()).into());
         }
 
         Ok(CompletedProcess {
@@ -245,7 +237,12 @@ impl EXIFProcessor {
         })
     }
 
-    /// Parses exiv2 -pe / -pt style output into HashMap<String, ParsedTag>.
+    /// Maximum number of characters kept for a potentially dangerous display value.
+    /// GPS tags are explicitly exempt because the complete coordinate value is needed
+    /// by GPSConverter.
+    const MAX_DISPLAY_VALUES: usize = 256;
+
+    /// Parses exiv2 -pa style output into IndexMap<String, ParsedTag>.
     ///
     /// Each line looks like:
     ///     Exif.GPSInfo.GPSLatitude    Rational    3    43/1 28/1 2814/1000
@@ -255,25 +252,33 @@ impl EXIFProcessor {
     /// the trailing value itself may contain spaces.
     fn parse_print_output(stdout: &str) -> IndexMap<String, ParsedTag> {
         let mut parsed: IndexMap<String, ParsedTag> = IndexMap::new();
+
         for line in stdout.lines() {
             if line.trim().is_empty() {
                 continue;
             }
+
             let parts = split_whitespace_max(line, 3);
             if parts.len() < 4 {
                 continue;
             }
+
             let key = parts[0].to_string();
             let tag_type = parts[1].to_string();
             let count_str = parts[2];
-            let count = if !count_str.is_empty()
-                && count_str.chars().all(|c| c.is_ascii_digit())
-            {
+            let count = if !count_str.is_empty() && count_str.chars().all(|c| c.is_ascii_digit()) {
                 ExifCount::Int(count_str.parse().unwrap_or(0))
             } else {
                 ExifCount::Str(count_str.to_string())
             };
-            let value = parts[3].trim().to_string();
+
+            let raw_value = parts[3].trim();
+            let value = if Self::should_limit_display_value(&key, &tag_type, &count) {
+                Self::limit_display_value(raw_value)
+            } else {
+                raw_value.to_string()
+            };
+
             parsed.insert(
                 key,
                 ParsedTag {
@@ -283,7 +288,41 @@ impl EXIFProcessor {
                 },
             );
         }
+
         parsed
+    }
+
+    fn should_limit_display_value(key: &str, tag_type: &str, count: &ExifCount) -> bool {
+        // GPS values must remain complete because geo_utils parses them later.
+        let key_lower = key.to_ascii_lowercase();
+        if key_lower.starts_with("exif.gpsinfo.") {
+            return false;
+        }
+
+        // MakerNote / DataDump fields are commonly large binary-ish payloads.
+        if key_lower.contains("datadump") || key_lower.contains("makernote") {
+            return true;
+        }
+
+        // Only apply the count-based rule to Undefined values.
+        if tag_type.eq_ignore_ascii_case("Undefined") {
+            if let ExifCount::Int(n) = count {
+                return *n > Self::MAX_DISPLAY_VALUES;
+            }
+        }
+
+        false
+    }
+
+    fn limit_display_value(value: &str) -> String {
+        let mut chars = value.chars();
+        let truncated: String = chars.by_ref().take(Self::MAX_DISPLAY_VALUES).collect();
+
+        if chars.next().is_some() {
+            format!("{truncated}…")
+        } else {
+            value.to_string()
+        }
     }
 
     /// Extracts EXIF data via exiv2, keyed by fully-qualified exiv2 keys.
@@ -296,7 +335,7 @@ impl EXIFProcessor {
     ///     },
     ///     "Exif.GPSInfo.GPSLatitude": {
     ///         type: "Rational", count: Int(3),
-    ///         value: "43/1 28/1 2814/1000",
+    ///         value: "43 deg 28' 2.81\"",
     ///         translated: "43 deg 28' 2.81\""
     ///     },
     ///     ...
@@ -312,23 +351,23 @@ impl EXIFProcessor {
     }
 
     fn extract_inner(&self) -> Result<IndexMap<String, ExifTag>, Box<dyn Error>> {
-        let raw_result = self.run(&["-pe", self.image_path.as_str()], true)?;
-        let translated_result = self.run(&["-pt", self.image_path.as_str()], true)?;
-
-        let raw_tags = Self::parse_print_output(&raw_result.stdout);
-        let translated_tags = Self::parse_print_output(&translated_result.stdout);
+        // Use one exiv2 invocation.  -pa gives the complete metadata set in the
+        // display-oriented form we want, avoiding the old -pe/-pt double pass.
+        let result = self.run(&["-pa", self.image_path.as_str()], true)?;
+        let tags = Self::parse_print_output(&result.stdout);
 
         let mut exif_data: IndexMap<String, ExifTag> = IndexMap::new();
-        for (key, info) in &raw_tags {
-            let translated_value = translated_tags.get(key).map(|t| t.value.clone());
-            let translated = translated_value.unwrap_or_else(|| info.value.clone());
+        for (key, info) in tags {
+            // Keep value and translated identical because -pa is now the single
+            // source of extracted metadata.  GPSConverter accepts both exiv2's
+            // rational form and its human-readable DMS form.
             exif_data.insert(
-                key.clone(),
+                key,
                 ExifTag {
-                    tag_type: info.tag_type.clone(),
-                    count: info.count.clone(),
+                    tag_type: info.tag_type,
+                    count: info.count,
                     value: info.value.clone(),
-                    translated,
+                    translated: info.value,
                 },
             );
         }
@@ -399,11 +438,8 @@ impl EXIFProcessor {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        let cmd_file_path = std::env::temp_dir().join(format!(
-            "exiv2_cmds_{}_{}.cmds",
-            std::process::id(),
-            nanos
-        ));
+        let cmd_file_path =
+            std::env::temp_dir().join(format!("exiv2_cmds_{}_{}.cmds", std::process::id(), nanos));
 
         {
             let mut cmd_file = fs::File::create(&cmd_file_path)?;
@@ -412,15 +448,10 @@ impl EXIFProcessor {
 
         let cmd_file_path_str = cmd_file_path
             .to_str()
-            .ok_or_else(|| -> Box<dyn Error> {
-                "Temp file path is not valid UTF-8".into()
-            })?;
+            .ok_or_else(|| -> Box<dyn Error> { "Temp file path is not valid UTF-8".into() })?;
 
         // Run exiv2 with check=false (we handle errors ourselves)
-        let run_result = self.run(
-            &["-m", cmd_file_path_str, self.image_path.as_str()],
-            false,
-        );
+        let run_result = self.run(&["-m", cmd_file_path_str, self.image_path.as_str()], false);
 
         // Cleanup temp file (equivalent to Python's finally block)
         let _ = fs::remove_file(&cmd_file_path);
@@ -457,11 +488,7 @@ impl EXIFProcessor {
         let message = if failed.is_empty() {
             format!("Updated {} tag(s)", applied.len())
         } else {
-            format!(
-                "Updated {} tag(s), {} failed",
-                applied.len(),
-                failed.len()
-            )
+            format!("Updated {} tag(s), {} failed", applied.len(), failed.len())
         };
 
         Ok(EditResult {
