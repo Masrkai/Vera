@@ -12,6 +12,8 @@ use slint::{
 // Import the generated types from the root crate (main.rs)
 use crate::{ExifDataManager, ExifRow};
 
+include!(concat!(env!("OUT_DIR"), "/generated_themes.rs"));
+
 use crate::dialogs::{FileDialogResult, open_file_dialog};
 use crate::processing::exiv2_backend::{EXIFProcessor, ExifValue};
 use crate::processing::geo_utils::GPSConverter;
@@ -170,8 +172,26 @@ impl ExifBridge {
                     .exif_value_edited(index as usize, new_value.to_string());
             });
         }
+        {
+            let b = bridge.clone();
+            ui.on_set_theme(move |index| {
+                b.lock().unwrap().set_theme(index.max(0) as usize);
+            });
+        }
 
-        bridge.lock().unwrap().set_status("Ready");
+        // Populate the theme dropdown from the generated theme table.
+        let theme_names: Vec<SharedString> = THEME_DISPLAY_NAMES
+            .iter()
+            .map(|name| SharedString::from(*name))
+            .collect();
+        ui.set_theme_names(ModelRc::new(VecModel::from(theme_names)));
+
+        ui.set_system_font_family(Self::get_default_system_font().into());
+        {
+            let bridge_guard = bridge.lock().unwrap();
+            bridge_guard.set_theme(default_theme_index());
+            bridge_guard.set_status("Ready");
+        }
 
         // Return both the bridge and the strong UI reference
         (bridge, ui)
@@ -657,6 +677,33 @@ impl ExifBridge {
                 b2.lock().unwrap().set_status("Batch processing finished");
             });
         });
+    }
+
+    fn get_default_system_font() -> String {
+        #[cfg(target_os = "windows")]
+        return "Segoe UI".to_string();
+        #[cfg(target_os = "macos")]
+        return "SF Pro Text".to_string();
+        #[cfg(target_os = "linux")]
+        return "DejaVu Sans".to_string();
+        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+        return "".to_string();
+    }
+
+    pub fn set_theme(&self, index: usize) {
+        let ui = self.ui();
+        let id = THEME_IDS.get(index).copied().unwrap_or("dark");
+        ui.set_theme_mode(id.into());
+        ui.set_theme_index(index as i32);
+
+        let colors = get_theme(index);
+        ui.set_bg_color(colors.bg);
+        ui.set_surface_color(colors.surface);
+        ui.set_text_color(colors.text);
+        ui.set_text_muted(colors.muted);
+        ui.set_border_color(colors.border);
+        ui.set_accent_color(colors.accent);
+        ui.set_preview_bg(colors.preview);
     }
 }
 
