@@ -213,6 +213,7 @@ export component ExifDataManager inherits Window {
     in-out property <color> preview-bg <=> Theme.preview-bg;
     in-out property <[string]> theme-names: [];
     in-out property <int> theme-index: 0;
+    in-out property <int> work-mode: 0; // 0 = Single Image, 1 = Multiple Images
 
     // --- Properties set from Python ---
     in-out property <string> current-file-name: "";
@@ -229,6 +230,12 @@ export component ExifDataManager inherits Window {
     in-out property <[string]>   batch-model;
     in-out property <[string]>   batch-status-model;
     in property <length> min-font-size: 14px;
+    in-out property <int> single-sub-mode: 0;
+    in-out property <string> steg-secret-text: "";
+    in-out property <string> steg-passphrase: "";
+    in-out property <int> steg-method-index: 0;
+    in-out property <[string]> steg-method-names: ["Metadata (EXIF)", "Pixel-Wise (LSB)", "Frequency-Wise (DCT)"];
+    in-out property <string> steg-output-text: "";
 
     // --- Callbacks handled in Python ---
     callback request-open-image();
@@ -244,6 +251,8 @@ export component ExifDataManager inherits Window {
     callback apply-filter(string);
     callback exif-value-edited(int, string);
     callback set-theme(int);
+    callback steg-embed();
+    callback steg-extract();
 
     Rectangle {
         width: 100%;
@@ -252,231 +261,446 @@ export component ExifDataManager inherits Window {
 
         VerticalLayout {
             padding: 10px;
-            spacing: 6px;
+            spacing: 8px;
 
-        // ── Single image section ──────────────────────────────────────
-        HorizontalLayout {
-            spacing: 12px;
+            // ── Top Bar: Mode Selector & Theme Selector ───────────────
+            HorizontalLayout {
+                alignment: space-between;
 
-            // FIX 1: Image preview that actually renders preview-source
-            Rectangle {
-                width: 260px;
-                height: 180px;
-                border-width: 1px;
-                border-color: root.border-color;
-                border-radius: 4px;
-                clip: true;
-                background: root.preview-bg;
-
-                Image {
-                    source: root.preview-source;
-                    width: parent.width;
-                    height: parent.height;
-                    image-fit: contain;
-                }
-
-                if root.current-file-name == "": Text {
-                    text: "No image loaded";
-                    vertical-alignment: center;
-                    horizontal-alignment: center;
-                    width: parent.width;
-                    height: parent.height;
-                    color: root.text-muted;
-                    font-size: max(root.min-font-size, 12px);
-                }
-
-                // Square icon hinting maximize feature
-                if root.current-file-name != "": Rectangle {
-                    x: parent.width - 28px;
-                    y: 4px;
-                    width: 24px;
-                    height: 24px;
-                    background: #2228;
-                    border-radius: 3px;
+                // Mode selector segmented control
+                Rectangle {
+                    height: 32px;
+                    width: 240px;
+                    background: root.surface-color;
+                    border-radius: 4px;
                     border-width: 1px;
-                    border-color: #fff6;
+                    border-color: root.border-color;
 
-                    Text {
-                        text: "⤢";
-                        color: #ffffff;
-                        font-size: 14px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                        width: parent.width;
-                        height: parent.height;
-                    }
+                    HorizontalLayout {
+                        padding: 2px;
+                        spacing: 2px;
 
-                    TouchArea {
-                        enabled: root.has-image;
-                        clicked => {
-                            root.request-maximize-image();
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            border-radius: 3px;
+                            background: root.work-mode == 0 ? root.accent-color : transparent;
+                            Text {
+                                text: "Single Image";
+                                color: root.work-mode == 0 ? #ffffff : root.text-color;
+                                font-size: 13px;
+                                font-weight: root.work-mode == 0 ? 700 : 400;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            TouchArea {
+                                clicked => { root.work-mode = 0; }
+                            }
+                        }
+
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            border-radius: 3px;
+                            background: root.work-mode == 1 ? root.accent-color : transparent;
+                            Text {
+                                text: "Multiple Images";
+                                color: root.work-mode == 1 ? #ffffff : root.text-color;
+                                font-size: 13px;
+                                font-weight: root.work-mode == 1 ? 700 : 400;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            TouchArea {
+                                clicked => { root.work-mode = 1; }
+                            }
                         }
                     }
                 }
+
+                ThemedDropdown {
+                    model: root.theme-names;
+                    current-index <=> root.theme-index;
+                    selected(index) => { root.set-theme(index); }
+                    min-width: 140px;
+                }
             }
 
-            VerticalLayout {
-                spacing: 6px;
+            // ── Mode 0: Single Image Workspace ────────────────────────
+            if root.work-mode == 0: VerticalLayout {
+                spacing: 8px;
                 vertical-stretch: 1;
 
                 HorizontalLayout {
-                    alignment: space-between;
-                    Text { text: "Single Image"; font-weight: 700; color: root.text-color; vertical-alignment: center; }
-                    ThemedDropdown {
-                        model: root.theme-names;
-                        current-index <=> root.theme-index;
-                        selected(index) => { root.set-theme(index); }
-                        min-width: 140px;
-                    }
-                }
-                Text {
-                    text: root.current-file-name == "" ? "No file selected" : root.current-file-name;
-                    color: root.text-color;
-                    overflow: elide;
-                }
+                    spacing: 12px;
 
-                HorizontalLayout {
-                    spacing: 6px;
-                    ThemedButton { text: "Open Image"; clicked => { root.request-open-image(); } }
-                    ThemedButton {
-                        text: "Open GPS Location";
-                        enabled: root.has-image && root.has-gps;
-                        clicked => { root.open-gps-location(); }
-                    }
-                    ThemedButton {
-                        text: "ESRI Satellite";
-                        enabled: root.has-image && root.has-gps;
-                        clicked => { root.open-esri-satellite(); }
-                    }
-                }
-
-                HorizontalLayout {
-                    spacing: 6px;
-                    ThemedCheckBox { text: "Preserve original"; checked <=> root.preserve-original; }
-                    ThemedButton   { text: "Delete EXIF"; enabled: root.has-image; clicked => { root.delete-exif(); } }
-                }
-            }
-        }
-
-        // ── Batch section ─────────────────────────────────────────────
-        Text { text: "Batch Processing"; font-weight: 700; color: root.text-color; }
-
-        HorizontalLayout {
-            spacing: 6px;
-            ThemedButton { text: "Add Images";  clicked => { root.request-open-images(); } }
-            ThemedButton { text: "Clear List";  clicked => { root.clear-batch-list(); } }
-            ThemedButton { text: "Start Batch"; clicked => { root.start-batch-process(); } }
-        }
-
-        ThemedCheckBox { text: "Preserve originals"; checked <=> root.batch-preserve-original; }
-
-        Text { text: "Queue:"; color: root.text-color; }
-
-        // FIX 3: clip + constrained width on list items
-        ListView {
-            height: 80px;
-            for item in root.batch-model: Rectangle {
-                height: 22px;
-                width: parent.width;
-                clip: true;
-                Text { text: item; color: root.text-color; vertical-alignment: center; overflow: elide; width: parent.width; }
-            }
-        }
-
-        Text { text: "Results:"; color: root.text-color; }
-
-        ListView {
-            height: 60px;
-            for item in root.batch-status-model: Rectangle {
-                height: 22px;
-                width: parent.width;
-                clip: true;
-                Text { text: item; color: root.text-color; vertical-alignment: center; overflow: elide; width: parent.width; }
-            }
-        }
-
-        // ── EXIF table ────────────────────────────────────────────────
-        HorizontalLayout {
-            spacing: 8px;
-            Text {
-                text: "EXIF Data";
-                font-weight: 700;
-                color: root.text-color;
-                vertical-alignment: center;
-            }
-            ThemedLineEdit {
-                placeholder-text: "Filter tags…";
-                edited(text) => { root.apply-filter(text); }
-                horizontal-stretch: 1;
-            }
-            ThemedButton {
-                text: "Save Changes";
-                enabled: root.has-image;
-                clicked => { root.save-exif-changes(); }
-            }
-        }
-
-        // FIX 2 + 3: LineEdit for editing, clip to prevent overflow
-        Rectangle {
-            clip: true;
-            vertical-stretch: 1;
-
-            ListView {
-                for row[idx] in root.exif-model: HorizontalLayout {
-                    height: 28px;
-                    spacing: 8px;
-                    padding-left: 4px;
-                    padding-right: 4px;
-
-                    // Tag column — fixed width, clipped
+                    // Image preview
                     Rectangle {
-                        width: 180px;
+                        width: 220px;
+                        height: 140px;
+                        border-width: 1px;
+                        border-color: root.border-color;
+                        border-radius: 4px;
                         clip: true;
-                        Text {
-                            text: row.tag;
-                            font-weight: row.is-common ? 700 : 400;
-                            color: root.text-color;
-                            vertical-alignment: center;
+                        background: root.preview-bg;
+
+                        Image {
+                            source: root.preview-source;
                             width: parent.width;
+                            height: parent.height;
+                            image-fit: contain;
+                        }
+
+                        if root.current-file-name == "": Text {
+                            text: "No image loaded";
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                            width: parent.width;
+                            height: parent.height;
+                            color: root.text-muted;
+                            font-size: max(root.min-font-size, 12px);
+                        }
+
+                        if root.current-file-name != "": Rectangle {
+                            x: parent.width - 28px;
+                            y: 4px;
+                            width: 24px;
+                            height: 24px;
+                            background: #2228;
+                            border-radius: 3px;
+                            border-width: 1px;
+                            border-color: #fff6;
+
+                            Text {
+                                text: "⤢";
+                                color: #ffffff;
+                                font-size: 14px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                width: parent.width;
+                                height: parent.height;
+                            }
+
+                            TouchArea {
+                                enabled: root.has-image;
+                                clicked => {
+                                    root.request-maximize-image();
+                                }
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 6px;
+                        vertical-stretch: 1;
+
+                        Text {
+                            text: root.current-file-name == "" ? "No file selected" : root.current-file-name;
+                            color: root.text-color;
+                            font-weight: 700;
                             overflow: elide;
                         }
+
+                        HorizontalLayout {
+                            spacing: 6px;
+                            ThemedButton { text: "Open Image"; clicked => { root.request-open-image(); } }
+                            ThemedButton {
+                                text: "GPS Location";
+                                enabled: root.has-image && root.has-gps;
+                                clicked => { root.open-gps-location(); }
+                            }
+                            ThemedButton {
+                                text: "ESRI Satellite";
+                                enabled: root.has-image && root.has-gps;
+                                clicked => { root.open-esri-satellite(); }
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 6px;
+                            ThemedCheckBox { text: "Preserve original"; checked <=> root.preserve-original; }
+                            ThemedButton   { text: "Delete EXIF"; enabled: root.has-image; clicked => { root.delete-exif(); } }
+                        }
+                    }
+                }
+
+                // Sub-mode tab selector: EXIF Metadata vs Steganography & Encryption
+                Rectangle {
+                    height: 32px;
+                    width: 320px;
+                    background: root.surface-color;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: root.border-color;
+
+                    HorizontalLayout {
+                        padding: 2px;
+                        spacing: 2px;
+
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            border-radius: 3px;
+                            background: root.single-sub-mode == 0 ? root.accent-color : transparent;
+                            Text {
+                                text: "EXIF Metadata";
+                                color: root.single-sub-mode == 0 ? #ffffff : root.text-color;
+                                font-size: 13px;
+                                font-weight: root.single-sub-mode == 0 ? 700 : 400;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            TouchArea {
+                                clicked => { root.single-sub-mode = 0; }
+                            }
+                        }
+
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            border-radius: 3px;
+                            background: root.single-sub-mode == 1 ? root.accent-color : transparent;
+                            Text {
+                                text: "Steganography";
+                                color: root.single-sub-mode == 1 ? #ffffff : root.text-color;
+                                font-size: 13px;
+                                font-weight: root.single-sub-mode == 1 ? 700 : 400;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            TouchArea {
+                                clicked => { root.single-sub-mode = 1; }
+                            }
+                        }
+                    }
+                }
+
+                // EXIF table section for Single Image
+                if root.single-sub-mode == 0: VerticalLayout {
+                    spacing: 6px;
+                    vertical-stretch: 1;
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: "EXIF Data";
+                            font-weight: 700;
+                            color: root.text-color;
+                            vertical-alignment: center;
+                        }
+                        ThemedLineEdit {
+                            placeholder-text: "Filter tags…";
+                            edited(text) => { root.apply-filter(text); }
+                            horizontal-stretch: 1;
+                        }
+                        ThemedButton {
+                            text: "Save Changes";
+                            enabled: root.has-image;
+                            clicked => { root.save-exif-changes(); }
+                        }
                     }
 
-                    // Value column — editable, stretches, clipped
                     Rectangle {
                         clip: true;
-                        horizontal-stretch: 1;
+                        vertical-stretch: 1;
+                        border-width: 1px;
+                        border-color: root.border-color;
+                        border-radius: 4px;
+                        background: root.surface-color;
 
-                        ThemedLineEdit {
-                            text: row.value;
-                            edited(new-text) => {
-                                root.exif-value-edited(idx, new-text);
+                        ListView {
+                            for row[idx] in root.exif-model: HorizontalLayout {
+                                height: 28px;
+                                spacing: 8px;
+                                padding-left: 4px;
+                                padding-right: 4px;
+
+                                Rectangle {
+                                    width: 180px;
+                                    clip: true;
+                                    Text {
+                                        text: row.tag;
+                                        font-weight: row.is-common ? 700 : 400;
+                                        color: root.text-color;
+                                        vertical-alignment: center;
+                                        width: parent.width;
+                                        overflow: elide;
+                                    }
+                                }
+
+                                Rectangle {
+                                    clip: true;
+                                    horizontal-stretch: 1;
+
+                                    ThemedLineEdit {
+                                        text: row.value;
+                                        edited(new-text) => {
+                                            root.exif-value-edited(idx, new-text);
+                                        }
+                                        width: parent.width;
+                                    }
+                                }
                             }
-                            width: parent.width;
+                        }
+                    }
+                }
+
+                // Steganography & Encryption section for Single Image
+                if root.single-sub-mode == 1: VerticalLayout {
+                    spacing: 8px;
+                    vertical-stretch: 1;
+
+                    Text {
+                        text: "AES-256 Encryption & Image Steganography";
+                        font-weight: 700;
+                        color: root.text-color;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Method:"; color: root.text-color; vertical-alignment: center; width: 100px; }
+                        ThemedDropdown {
+                            model: root.steg-method-names;
+                            current-index <=> root.steg-method-index;
+                            horizontal-stretch: 1;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Secret Text X:"; color: root.text-color; vertical-alignment: center; width: 100px; }
+                        ThemedLineEdit {
+                            text <=> root.steg-secret-text;
+                            placeholder-text: "Enter secret message to encrypt and hide…";
+                            horizontal-stretch: 1;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Passphrase Y:"; color: root.text-color; vertical-alignment: center; width: 100px; }
+                        ThemedLineEdit {
+                            text <=> root.steg-passphrase;
+                            placeholder-text: "Enter AES-256 encryption password…";
+                            horizontal-stretch: 1;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        ThemedButton {
+                            text: "Encrypt & Embed";
+                            enabled: root.has-image;
+                            clicked => { root.steg-embed(); }
+                        }
+                        ThemedButton {
+                            text: "Extract & Decrypt";
+                            enabled: root.has-image;
+                            clicked => { root.steg-extract(); }
+                        }
+                    }
+
+                    Text { text: "Decrypted Message / Output Result:"; color: root.text-color; font-weight: 600; }
+
+                    Rectangle {
+                        clip: true;
+                        vertical-stretch: 1;
+                        border-width: 1px;
+                        border-color: root.border-color;
+                        border-radius: 4px;
+                        background: root.surface-color;
+                        padding: 8px;
+
+                        VerticalLayout {
+                            padding: 8px;
+                            TextInput {
+                                text <=> root.steg-output-text;
+                                color: root.text-color;
+                                font-size: 13px;
+                                read-only: true;
+                                wrap: word-wrap;
+                            }
                         }
                     }
                 }
             }
-        }
 
-        // ── Status bar ────────────────────────────────────────────────
-        HorizontalLayout {
-            spacing: 8px;
-            height: 20px;
-            Text { text: root.status-message; color: root.text-color; vertical-alignment: center; font-size: max(root.min-font-size, 11px); }
+            // ── Mode 1: Multiple Images Workspace (Batch) ─────────────
+            if root.work-mode == 1: VerticalLayout {
+                spacing: 8px;
+                vertical-stretch: 1;
 
-            if root.batch-progress > 0.0 && root.batch-progress < 1.0: Rectangle {
-                height: 14px;
-                background: root.border-color;
-                border-radius: 7px;
+                Text { text: "Batch Processing Operations"; font-weight: 700; color: root.text-color; }
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    ThemedButton { text: "Add Images";  clicked => { root.request-open-images(); } }
+                    ThemedButton { text: "Clear List";  clicked => { root.clear-batch-list(); } }
+                    ThemedButton { text: "Start Batch"; clicked => { root.start-batch-process(); } }
+                }
+
+                ThemedCheckBox { text: "Preserve originals"; checked <=> root.batch-preserve-original; }
+
+                Text { text: "Queue:"; color: root.text-color; font-weight: 600; }
+
                 Rectangle {
-                    x: 0;
-                    width: parent.width * root.batch-progress;
-                    height: parent.height;
-                    background: root.accent-color;
-                    border-radius: 7px;
+                    clip: true;
+                    height: 120px;
+                    border-width: 1px;
+                    border-color: root.border-color;
+                    border-radius: 4px;
+                    background: root.surface-color;
+
+                    ListView {
+                        height: parent.height;
+                        for item in root.batch-model: Rectangle {
+                            height: 24px;
+                            width: parent.width;
+                            clip: true;
+                            padding-left: 8px;
+                            Text { text: item; color: root.text-color; vertical-alignment: center; overflow: elide; width: parent.width; }
+                        }
+                    }
+                }
+
+                Text { text: "Results:"; color: root.text-color; font-weight: 600; }
+
+                Rectangle {
+                    clip: true;
+                    vertical-stretch: 1;
+                    border-width: 1px;
+                    border-color: root.border-color;
+                    border-radius: 4px;
+                    background: root.surface-color;
+
+                    ListView {
+                        height: parent.height;
+                        for item in root.batch-status-model: Rectangle {
+                            height: 24px;
+                            width: parent.width;
+                            clip: true;
+                            padding-left: 8px;
+                            Text { text: item; color: root.text-color; vertical-alignment: center; overflow: elide; width: parent.width; }
+                        }
+                    }
                 }
             }
+
+            // ── Status bar ────────────────────────────────────────────
+            HorizontalLayout {
+                spacing: 8px;
+                height: 20px;
+                Text { text: root.status-message; color: root.text-color; vertical-alignment: center; font-size: max(root.min-font-size, 11px); }
+
+                if root.batch-progress > 0.0 && root.batch-progress < 1.0: Rectangle {
+                    height: 14px;
+                    background: root.border-color;
+                    border-radius: 7px;
+                    Rectangle {
+                        x: 0;
+                        width: parent.width * root.batch-progress;
+                        height: parent.height;
+                        background: root.accent-color;
+                        border-radius: 7px;
+                    }
+                }
             }
         }
     }

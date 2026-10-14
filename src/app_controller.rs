@@ -17,6 +17,8 @@ include!(concat!(env!("OUT_DIR"), "/generated_themes.rs"));
 use crate::dialogs::{FileDialogResult, open_file_dialog};
 use crate::processing::exiv2_backend::{EXIFProcessor, ExifValue};
 use crate::processing::geo_utils::GPSConverter;
+use crate::processing::openssl_backend::OpensslProcessor;
+use crate::processing::steg_backend::{StegMethod, StegProcessor};
 
 // ── Preview thumbnail loading ───────────────────────────────────────────
 //
@@ -178,6 +180,18 @@ impl ExifBridge {
                 b.lock().unwrap().set_theme(index.max(0) as usize);
             });
         }
+        {
+            let b = bridge.clone();
+            ui.on_steg_embed(move || {
+                ExifBridge::steg_embed(&b);
+            });
+        }
+        {
+            let b = bridge.clone();
+            ui.on_steg_extract(move || {
+                ExifBridge::steg_extract(&b);
+            });
+        }
 
         // Populate the theme dropdown from the generated theme table.
         let theme_names: Vec<SharedString> = THEME_DISPLAY_NAMES
@@ -267,6 +281,7 @@ impl ExifBridge {
         }
 
         guard.current_path = path.clone();
+        guard.ui().set_work_mode(0);
         guard.ui().set_current_file_name(
             Path::new(&path)
                 .file_name()
@@ -584,6 +599,7 @@ impl ExifBridge {
 
     // ── Batch processing ───────────────────────────────────────────────
     fn add_batch_files(&mut self, file_paths: Vec<String>) {
+        self.ui().set_work_mode(1);
         let batch_model = self.ui().get_batch_model();
         if let Some(vec_model) = batch_model
             .as_any()
@@ -704,6 +720,114 @@ impl ExifBridge {
         ui.set_border_color(colors.border);
         ui.set_accent_color(colors.accent);
         ui.set_preview_bg(colors.preview);
+    }
+
+    pub fn steg_embed(this: &Arc<Mutex<Self>>) {
+        let (path, secret_text, passphrase, method_index, preserve) = {
+            let guard = this.lock().unwrap();
+            let ui = guard.ui();
+            (
+                guard.current_path.clone(),
+                ui.get_steg_secret_text().to_string(),
+                ui.get_steg_passphrase().to_string(),
+                ui.get_steg_method_index() as usize,
+                ui.get_preserve_original(),
+            )
+        };
+
+        if path.is_empty() {
+            this.lock().unwrap().set_status("No image loaded for steganography embedding.");
+            return;
+        }
+        if secret_text.is_empty() || passphrase.is_empty() {
+            this.lock().unwrap().set_status("Error: Secret text and passphrase cannot be empty.");
+            return;
+        }
+
+        let method = StegMethod::from_index(method_index);
+        this.lock().unwrap().set_status("Encrypting text with AES-256 and embedding...");
+
+        let ciphertext = match OpensslProcessor::encrypt(&secret_text, &passphrase) {
+            Ok(ct) => ct,
+            Err(e) => {
+                this.lock().unwrap().set_status(&format!("Encryption error: {}", e));
+                return;
+            }
+        };
+
+        let p = Path::new(&path);
+        let output_path = if preserve {
+            let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+            let ext = if method == StegMethod::Metadata {
+                p.extension().and_then(|e| e.to_str()).unwrap_or("jpg")
+            } else {
+                "png"
+            };
+            let parent = p.parent().unwrap_or(Path::new("."));
+            parent.join(format!("{}_steg.{}", stem, ext)).to_string_lossy().to_string()
+        } else {
+            path.clone()
+        };
+
+        match StegProcessor::embed(&path, &output_path, &ciphertext, method) {
+            Ok(()) => {
+                let msg = format!("Successfully embedded ciphertext using {} into {}", method.name(), output_path);
+                this.lock().unwrap().set_status(&msg);
+                if preserve {
+                    ExifBridge::load_image(this, output_path);
+                }
+            }
+            Err(e) => {
+                this.lock().unwrap().set_status(&format!("Embedding error: {}", e));
+            }
+        }
+    }
+
+    pub fn steg_extract(this: &Arc<Mutex<Self>>) {
+        let (path, passphrase, method_index) = {
+            let guard = this.lock().unwrap();
+            let ui = guard.ui();
+            (
+                guard.current_path.clone(),
+                ui.get_steg_passphrase().to_string(),
+                ui.get_steg_method_index() as usize,
+            )
+        };
+
+        if path.is_empty() {
+            this.lock().unwrap().set_status("No image loaded for steganography extraction.");
+            return;
+        }
+        if passphrase.is_empty() {
+            this.lock().unwrap().set_status("Error: Passphrase cannot be empty for decryption.");
+            return;
+        }
+
+        let method = StegMethod::from_index(method_index);
+        this.lock().unwrap().set_status("Extracting ciphertext and decrypting...");
+
+        let ciphertext = match StegProcessor::extract(&path, method) {
+            Ok(ct) => ct,
+            Err(e) => {
+                let mut guard = this.lock().unwrap();
+                guard.set_status(&format!("Extraction error: {}", e));
+                guard.ui().set_steg_output_text("".into());
+                return;
+            }
+        };
+
+        match OpensslProcessor::decrypt(&ciphertext, &passphrase) {
+            Ok(plaintext) => {
+                let guard = this.lock().unwrap();
+                guard.ui().set_steg_output_text(plaintext.into());
+                guard.set_status("Successfully extracted and decrypted secret message!");
+            }
+            Err(e) => {
+                let mut guard = this.lock().unwrap();
+                guard.set_status(&format!("Decryption error: {}", e));
+                guard.ui().set_steg_output_text("".into());
+            }
+        }
     }
 }
 
