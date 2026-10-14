@@ -15,6 +15,8 @@ export component ExifDataManager inherits Window {
     // --- Properties set from Python ---
     in-out property <string> current-file-name: "";
     in-out property <image>  preview-source;
+    in-out property <image>  maximized-preview-source;
+    in-out property <bool>   show-maximized-dialog: false;
     in-out property <bool>   has-gps: false;
     in-out property <bool>   preserve-original: false;
     in-out property <bool>   batch-preserve-original: false;
@@ -28,6 +30,7 @@ export component ExifDataManager inherits Window {
     // --- Callbacks handled in Python ---
     callback request-open-image();
     callback request-open-images();
+    callback request-maximize-image();
     callback load-image(string);
     callback clear-batch-list();
     callback start-batch-process();
@@ -71,6 +74,34 @@ export component ExifDataManager inherits Window {
                     height: parent.height;
                     color: #999;
                     font-size: max(root.min-font-size, 12px);
+                }
+
+                // Square icon hinting maximize feature
+                if root.current-file-name != "": Rectangle {
+                    x: parent.width - 28px;
+                    y: 4px;
+                    width: 24px;
+                    height: 24px;
+                    background: #2228;
+                    border-radius: 3px;
+                    border-width: 1px;
+                    border-color: #fff6;
+
+                    Text {
+                        text: "⤢";
+                        color: #ffffff;
+                        font-size: 14px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        width: parent.width;
+                        height: parent.height;
+                    }
+
+                    TouchArea {
+                        clicked => {
+                            root.request-maximize-image();
+                        }
+                    }
                 }
             }
 
@@ -221,6 +252,67 @@ export component ExifDataManager inherits Window {
                     height: parent.height;
                     background: #4a90d9;
                     border-radius: 7px;
+                }
+            }
+        }
+    }
+
+    // Modal popup dialog for maximized image view
+    if root.show-maximized-dialog: Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #000a;
+        z: 100;
+
+        TouchArea {
+            clicked => {
+                root.show-maximized-dialog = false;
+            }
+        }
+
+        Rectangle {
+            width: root.width * 0.85;
+            height: root.height * 0.85;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: #ffffff;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: #ccc;
+            clip: true;
+
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+
+                HorizontalLayout {
+                    alignment: space-between;
+                    Text {
+                        text: root.current-file-name;
+                        font-weight: 700;
+                        font-size: 15px;
+                        vertical-alignment: center;
+                    }
+                    Button {
+                        text: "Close";
+                        clicked => {
+                            root.show-maximized-dialog = false;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                    background: #111;
+                    border-radius: 4px;
+                    clip: true;
+
+                    Image {
+                        source: root.maximized-preview-source;
+                        width: parent.width;
+                        height: parent.height;
+                        image-fit: contain;
+                    }
                 }
             }
         }

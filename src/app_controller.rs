@@ -34,6 +34,8 @@ use crate::processing::geo_utils::GPSConverter;
 // the source photo's resolution.
 const PREVIEW_MAX_WIDTH: u32 = 520; // ~2x the 260px-wide preview box, for HiDPI
 const PREVIEW_MAX_HEIGHT: u32 = 360; // ~2x the 180px-tall preview box
+const MAXIMIZED_MAX_WIDTH: u32 = 1920;
+const MAXIMIZED_MAX_HEIGHT: u32 = 1080;
 
 fn load_preview_thumbnail(path: &str) -> Image {
     let decoded = match image::open(path) {
@@ -46,6 +48,21 @@ fn load_preview_thumbnail(path: &str) -> Image {
     // never allocates a buffer larger than the original.
     let thumbnail = decoded
         .thumbnail(PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT)
+        .to_rgba8();
+    let (width, height) = thumbnail.dimensions();
+    let buffer =
+        SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(thumbnail.as_raw(), width, height);
+    Image::from_rgba8(buffer)
+}
+
+fn load_maximized_image(path: &str) -> Image {
+    let decoded = match image::open(path) {
+        Ok(img) => img,
+        Err(_) => return Image::default(),
+    };
+
+    let thumbnail = decoded
+        .thumbnail(MAXIMIZED_MAX_WIDTH, MAXIMIZED_MAX_HEIGHT)
         .to_rgba8();
     let (width, height) = thumbnail.dimensions();
     let buffer =
@@ -89,6 +106,12 @@ impl ExifBridge {
             let b = bridge.clone();
             ui.on_request_open_images(move || {
                 ExifBridge::request_open_images(&b);
+            });
+        }
+        {
+            let b = bridge.clone();
+            ui.on_request_maximize_image(move || {
+                ExifBridge::maximize_image(&b);
             });
         }
         {
@@ -199,6 +222,20 @@ impl ExifBridge {
             Ok(_) => {}
             Err(e) => this.lock().unwrap().set_status(&e.to_string()),
         }
+    }
+
+    fn maximize_image(this: &Arc<Mutex<Self>>) {
+        let guard = this.lock().unwrap();
+        if guard.current_path.is_empty() {
+            return;
+        }
+        let path = guard.current_path.clone();
+        drop(guard);
+
+        let img = load_maximized_image(&path);
+        let guard = this.lock().unwrap();
+        guard.ui().set_maximized_preview_source(img);
+        guard.ui().set_show_maximized_dialog(true);
     }
 
     // ── Single image ───────────────────────────────────────────────────
