@@ -4,6 +4,7 @@ slint::include_modules!();
 
 mod dialogs;
 mod processing;
+mod controllers;
 mod app_controller;
 
 use app_controller::ExifBridge;

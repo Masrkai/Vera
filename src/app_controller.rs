@@ -19,60 +19,7 @@ use crate::processing::exiv2_backend::{EXIFProcessor, ExifValue};
 use crate::processing::geo_utils::GPSConverter;
 use crate::processing::openssl_backend::OpensslProcessor;
 use crate::processing::steg_backend::{StegMethod, StegProcessor};
-
-// ── Preview thumbnail loading ───────────────────────────────────────────
-//
-// BUG FIX (todo.md: "Clicking 'open image' while another image is already
-// open seems to increase memory usage drastically"):
-//
-// `Image::load_from_path` used to be called here directly, which decodes a
-// photo at its "original" resolution and hands the full bitmap to Slint —
-// even though it's only ever displayed inside a fixed 260x180 preview box.
-// A single 12MP phone photo is already ~48MB of raw RGBA; opening a second
-// image while the first is still loaded (or while its background EXIF
-// extraction thread is still running) briefly holds two full-resolution
-// bitmaps in memory at once, and large camera-original JPEGs/RAW-derived
-// files can be far bigger. That was a drastic memory jump.
-//
-// Decoding straight to a small thumbnail bounds memory use regardless of
-// the source photo's resolution.
-const PREVIEW_MAX_WIDTH: u32 = 520; // ~2x the 260px-wide preview box, for HiDPI
-const PREVIEW_MAX_HEIGHT: u32 = 360; // ~2x the 180px-tall preview box
-const MAXIMIZED_MAX_WIDTH: u32 = 1920;
-const MAXIMIZED_MAX_HEIGHT: u32 = 1080;
-
-fn load_preview_thumbnail(path: &str) -> Image {
-    let decoded = match image::open(path) {
-        Ok(img) => img,
-        Err(_) => return Image::default(),
-    };
-
-    // `thumbnail()` scales down to fit within the given bounds (preserving
-    // aspect ratio) using a fast filter meant for exactly this use case, and
-    // never allocates a buffer larger than the original.
-    let thumbnail = decoded
-        .thumbnail(PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT)
-        .to_rgba8();
-    let (width, height) = thumbnail.dimensions();
-    let buffer =
-        SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(thumbnail.as_raw(), width, height);
-    Image::from_rgba8(buffer)
-}
-
-fn load_maximized_image(path: &str) -> Image {
-    let decoded = match image::open(path) {
-        Ok(img) => img,
-        Err(_) => return Image::default(),
-    };
-
-    let thumbnail = decoded
-        .thumbnail(MAXIMIZED_MAX_WIDTH, MAXIMIZED_MAX_HEIGHT)
-        .to_rgba8();
-    let (width, height) = thumbnail.dimensions();
-    let buffer =
-        SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(thumbnail.as_raw(), width, height);
-    Image::from_rgba8(buffer)
-}
+use crate::controllers::image_loader::{load_preview_thumbnail, load_maximized_image};
 
 pub struct ExifBridge {
     ui: Weak<ExifDataManager>,
