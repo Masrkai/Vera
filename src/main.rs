@@ -1,13 +1,4 @@
-// The include_modules!() macro exposes the generated types
-// created by slint_build in build.rs
-slint::include_modules!();
-
-mod dialogs;
-mod processing;
-mod controllers;
-mod app_controller;
-
-use app_controller::ExifBridge;
+use vera::app_controller::ExifBridge;
 
 fn main() {
     // Initialize the bridge, which in turn instantiates the Slint UI component

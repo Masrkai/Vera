@@ -2,25 +2,43 @@
 
 - [x] The basic main goal of making a drop-in Google Maps viewer using image metadata, while simultaneously being able to see, edit, or delete metadata in single or multiple batches.
 
-## Bugs to Fix
+## Implemented Features & Criteria
 
-### Logic
+### 1. EXIF Metadata Management & Visualization
+- [x] Single Image Workspace
+  - [x] EXIF extraction and parsing (`exiv2_backend.rs`)
+  - [x] Tag filtering and searching
+  - [x] Inline editing of EXIF tag values
+  - [x] Tag deletion (individual tags)
+  - [x] Complete EXIF metadata deletion with confirmation dialog
+  - [x] Preserve original file option
+- [x] Batch Processing Workspace
+  - [x] Queue management for multiple images (`batch_operations.rs`)
+  - [x] Batch EXIF deletion
+  - [x] Batch progress tracking and status results
+  - [x] Preserve originals option for batch operations
 
-- [x] Clicking "open image" while another image is already open seems to increase memory usage drastically.
+### 2. Geolocation & Mapping
+- [x] Drop-in Google Maps viewer using image GPS metadata (`geo_utils.rs`)
+- [x] Alternative ESRI satellite imagery viewer option
 
-### Bundle & Build
+### 3. Forensic Analysis, Cryptography & Steganography
+- [x] AES-256 Encryption & Decryption (`openssl_backend.rs`)
+- [x] Steganography Embedding & Extraction (`steg_backend.rs`)
+  - [x] Metadata (EXIF) Wise
+  - [x] Pixel Wise (LSB - Least Significant Bit)
+  - [x] Frequency Wise (DCT - Discrete Cosine Transform)
+- [x] BDD Testing Suite (Cucumber feature tests for exif extraction, batch operations, and forensic workflow)
 
-- [x] Using the GUI without the `SLINT_BACKEND=winit-software cargo run` flag makes the GUI render using OpenGL, which consumes much more memory.
-- [ ] The Slint package in Cargo is extremely dense; building requires compiling around `674` packages using `cargo build --release`.
-- [ ] Ship the application properly on Linux using freedesktop.org standards (app icon and `.desktop` file).
-  - [x] NixOS
-  - [ ] Standard Linux Desktop
+### 4. UI & Theming
+- [x] Responsive Slint GUI (`ui/main.slint`, `components.slint`)
+- [x] Multi-theme support (Dark, Light, Gruvbox, Dracula, Nord, Hotpink)
+- [x] Image preview and maximized image modal viewer
 
-## Future List
+### 5. Integration & Packaging
+- [x] XDG desktop integration ("Open with" / `.desktop` file support)
+- [x] App icon asset (`assets/Vera.svg`)
+- [x] NixOS support & development shell (`vera.nix`, `shell.nix`)
 
-- [x] Add an XDG standard for opening image files through the options called "open with" then by selecting "vera" it opens the image directly!.
-- [x] Add an option to view locations using ESRI satellite imagery.
-- [ ] Add logic for more forensic analysis. (this will be the most huge ask or a separate project entirely)
-  - [ ] Add patterns for Encrypting and Decrypting a message from an image.
-    - [ ] Frequency Wise
-    - [ ] Pixel Wise
+
+
