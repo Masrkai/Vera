@@ -30,7 +30,7 @@ in
 
 rustPlatform.buildRustPackage {
   pname = "vera";
-  version = "0.1.0";
+  version = "1.4.0";
   src = ./.;
 
   cargoLock.lockFile = ./Cargo.lock;

@@ -5,7 +5,7 @@
 
 # Vera
 
-**A simple tool for protecting your privacy**
+**A powerful privacy toolkit and image forensic analyzer**
 
 *Project initialized on July 14, 2025, by @Masrkai*
 > Note: this repo doesn't reflect the date because it was rebased alot previously it was named as `EXIF-Dumper` and was wriiten in python see [here](./docs/choice.md) the iterations i had to go through to get to this point
@@ -32,13 +32,18 @@ This metadata creates a detailed digital fingerprint that makes tracking you sig
 
 ## The Solution
 
-Vera provides a straightforward way to sanitize your images by editing or deleting EXIF data as needed. This tool ensures your personal information isn't inadvertently shared when you post photos online.
+Vera provides a comprehensive suite of tools to sanitize your images, embed/extract hidden payloads, and map locations securely.
 
 ### Key Features
 
-- **Metadata removal** - Strip all EXIF data from images
-- **Batch processing** - Handle multiple images at once (deleting their metadata only)
-- **Privacy-focused**  - No data collection or cloud processing
+- **Advanced EXIF Metadata Management** - Extract, filter, search, inline edit, delete individual tags, or completely strip all EXIF metadata with preserve-original options.
+- **Batch Processing Workspace** - Efficient queue management for handling and cleaning metadata across multiple images simultaneously.
+- **Geolocation & Mapping** - Drop-in interactive Google Maps and ESRI satellite imagery viewer driven by image GPS coordinates.
+- **Cryptography & Forensic Analysis** - Built-in AES-256 encryption and decryption support.
+- **Steganography Suite** - Multi-backend steganography for embedding and extracting hidden data across Metadata-wise, Pixel-wise (LSB), and Frequency-wise (DCT) layers.
+- **Slint GUI & Multi-Theme Support** - Responsive native interface with 6 gorgeous themes (Dark, Light, Gruvbox, Dracula, Nord, Hotpink) and maximized image modal previews.
+- **XDG Desktop & NixOS Integration** - Seamless desktop environment integration, app icon assets, and NixOS development shell support.
+- **Privacy-Focused** - 100% local processing with zero data collection or cloud telemetry.
 
 ---
 
