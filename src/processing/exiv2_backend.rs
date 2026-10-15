@@ -72,6 +72,8 @@ pub enum ExifValue {
     /// A (type, value) pair for explicit typing:
     /// ("Rational", "43/1 28/1 2814/1000")
     Typed(String, String),
+    /// Delete the tag
+    Delete,
 }
 
 // ---------------------------------------------------------------------------
@@ -409,6 +411,45 @@ impl EXIFProcessor {
         })
     }
 
+    pub fn edit_commands(
+        &self,
+        commands: &[String],
+        preserve_original: bool,
+    ) -> Result<EditResult, Box<dyn Error>> {
+        if preserve_original {
+            let backup_path = format!("{}.backup", self.image_path);
+            fs::copy(&self.image_path, &backup_path)?;
+        }
+
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let cmd_file_path =
+            std::env::temp_dir().join(format!("exiv2_cmds_{}_{}.cmds", std::process::id(), nanos));
+
+        {
+            let mut cmd_file = fs::File::create(&cmd_file_path)?;
+            writeln!(cmd_file, "{}", commands.join("\n"))?;
+        }
+
+        let cmd_file_path_str = cmd_file_path
+            .to_str()
+            .ok_or_else(|| -> Box<dyn Error> { "Temp file path is not valid UTF-8".into() })?;
+
+        let run_result = self.run(&["-m", cmd_file_path_str, self.image_path.as_str()], false);
+        let _ = fs::remove_file(&cmd_file_path);
+        let result = run_result?;
+
+        let status = if result.returncode == 0 { "success".to_string() } else { "partial".to_string() };
+        Ok(EditResult {
+            status,
+            applied: vec!["custom_commands".to_string()],
+            failed: vec![],
+            message: "Custom metadata commands applied successfully".to_string(),
+        })
+    }
+
     fn edit_inner(
         &self,
         exif_data: &HashMap<String, ExifValue>,
@@ -429,6 +470,9 @@ impl EXIFProcessor {
                 }
                 ExifValue::Plain(val) => {
                     commands.push(format!("set {} {}", key, val));
+                }
+                ExifValue::Delete => {
+                    commands.push(format!("del {}", key));
                 }
             }
         }

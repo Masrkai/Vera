@@ -75,7 +75,9 @@ impl OpensslProcessor {
 
         if let Some(mut stdin) = child.stdin.take() {
             stdin.write_all(plaintext.as_bytes())?;
+            stdin.flush()?;
         }
+        drop(child.stdin.take());
 
         let output = child.wait_with_output()?;
 
@@ -108,8 +110,10 @@ impl OpensslProcessor {
             .spawn()?;
 
         if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(ciphertext.as_bytes())?;
+            stdin.write_all(format!("{}\n", ciphertext.trim()).as_bytes())?;
+            stdin.flush()?;
         }
+        drop(child.stdin.take());
 
         let output = child.wait_with_output()?;
 

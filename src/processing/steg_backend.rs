@@ -49,22 +49,35 @@ impl StegProcessor {
         output_path: &str,
         ciphertext: &str,
         method: StegMethod,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<String, Box<dyn Error>> {
+        // If method is PixelLsb or FrequencyWise, ensure output format is lossless (.png)
+        let mut final_output_path = output_path.to_string();
+        if method != StegMethod::Metadata {
+            let lower = output_path.to_lowercase();
+            if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+                if let Some(p) = std::path::Path::new(output_path).parent() {
+                    let stem = std::path::Path::new(output_path)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("image");
+                    final_output_path = p.join(format!("{}.png", stem)).to_string_lossy().to_string();
+                }
+            }
+        }
+
         match method {
             StegMethod::Metadata => {
-                // Copy image to output path first if different
-                if image_path != output_path {
-                    fs::copy(image_path, output_path)?;
+                if image_path != final_output_path {
+                    fs::copy(image_path, &final_output_path)?;
                 }
-                let mut edits = std::collections::HashMap::new();
-                edits.insert(
-                    "Exif.Image.ImageDescription".to_string(),
-                    ExifValue::Plain(ciphertext.to_string()),
-                );
-                let processor = EXIFProcessor::new(output_path.to_string())?;
-                let result = processor.edit(&edits, false)?;
+                let commands = vec![
+                    "reg vera http://ns.vera.org/steg/1.0/".to_string(),
+                    format!("add Xmp.vera.Vera XmpText {}", ciphertext),
+                ];
+                let processor = EXIFProcessor::new(final_output_path.clone())?;
+                let result = processor.edit_commands(&commands, false)?;
                 if result.status == "success" || result.status == "partial" {
-                    Ok(())
+                    Ok(final_output_path)
                 } else {
                     Err(format!("Failed to embed in metadata: {}", result.message).into())
                 }
@@ -74,7 +87,7 @@ impl StegProcessor {
                 let (width, height) = img.dimensions();
                 let payload = serialize_payload(ciphertext);
                 let total_bits = payload.len() * 8;
-                let available_bits = (width as usize) * (height as usize) * 3; // R, G, B channels
+                let available_bits = (width as usize) * (height as usize) * 3;
 
                 if total_bits > available_bits {
                     return Err(format!(
@@ -110,17 +123,15 @@ impl StegProcessor {
                     }
                 }
 
-                out_img.save(output_path)?;
-                Ok(())
+                out_img.save(&final_output_path)?;
+                Ok(final_output_path)
             }
             StegMethod::FrequencyWise => {
-                // Frequency-Wise steganography: embedding in frequency coefficients (mid-frequency blocks)
                 let img = ImageReader::open(image_path)?.decode()?.to_rgba8();
                 let (width, height) = img.dimensions();
                 let payload = serialize_payload(ciphertext);
                 let total_bits = payload.len() * 8;
 
-                // We divide image into 8x8 blocks and embed bits into mid-frequency coefficient differences
                 let block_size = 8;
                 let blocks_x = (width as usize) / block_size;
                 let blocks_y = (height as usize) / block_size;
@@ -147,12 +158,10 @@ impl StegProcessor {
                         let bit_off = 7 - (bit_index % 8);
                         let bit = ((payload[byte_idx] >> bit_off) & 1) != 0;
 
-                        // Modify a representative pixel pair in the 8x8 block (e.g. (3,3) and (3,4))
                         let px = (bx * block_size + 3) as u32;
                         let py = (by * block_size + 3) as u32;
                         let pixel = out_img.get_pixel_mut(px, py);
 
-                        // Modulate green channel LSB based on frequency bit
                         if bit {
                             pixel[1] |= 1;
                         } else {
@@ -163,30 +172,53 @@ impl StegProcessor {
                     }
                 }
 
-                out_img.save(output_path)?;
-                Ok(())
+                out_img.save(&final_output_path)?;
+                Ok(final_output_path)
             }
         }
     }
 
     pub fn extract(image_path: &str, method: StegMethod) -> Result<String, Box<dyn Error>> {
+        // Try requested method first
+        if let Ok(res) = Self::extract_single(image_path, method) {
+            return Ok(res);
+        }
+
+        // Fallback: try all methods
+        for m in [StegMethod::Metadata, StegMethod::PixelLsb, StegMethod::FrequencyWise] {
+            if m != method {
+                if let Ok(res) = Self::extract_single(image_path, m) {
+                    return Ok(res);
+                }
+            }
+        }
+
+        Err("Failed to extract steganography ciphertext using any method. Ensure the image contains an embedded secret message.".into())
+    }
+
+    fn extract_single(image_path: &str, method: StegMethod) -> Result<String, Box<dyn Error>> {
         match method {
             StegMethod::Metadata => {
                 let processor = EXIFProcessor::new(image_path.to_string())?;
                 let tags = processor.extract()?;
-                if let Some(tag) = tags.get("Exif.Image.ImageDescription") {
+                if let Some(tag) = tags.get("Xmp.vera.Vera") {
+                    Ok(tag.value.clone())
+                } else if let Some(tag) = tags.get("Exif.Image.Vera") {
+                    Ok(tag.value.clone())
+                } else if let Some(tag) = tags.get("Xmp.xmp.Vera") {
+                    Ok(tag.value.clone())
+                } else if let Some(tag) = tags.get("Exif.Image.ImageDescription") {
                     Ok(tag.value.clone())
                 } else if let Some(tag) = tags.get("Exif.Photo.UserComment") {
                     Ok(tag.value.clone())
                 } else {
-                    Err("No steganography ciphertext found in image metadata.".into())
+                    Err("No steganography ciphertext found in image metadata (tag 'Vera' not found).".into())
                 }
             }
             StegMethod::PixelLsb => {
                 let img = ImageReader::open(image_path)?.decode()?.to_rgba8();
                 let (width, height) = img.dimensions();
 
-                // Extract bits into a byte buffer
                 let mut bits = Vec::new();
                 for y in 0..height {
                     for x in 0..width {
@@ -256,7 +288,6 @@ fn parse_extracted_bytes(bytes: &[u8]) -> Result<String, Box<dyn Error>> {
         return Err("Invalid steganography payload or magic header not found.".into());
     }
 
-    // Find magic header position
     let mut start_pos = 0;
     for i in 0..bytes.len().saturating_sub(MAGIC_HEADER.len()) {
         if &bytes[i..i + MAGIC_HEADER.len()] == MAGIC_HEADER {
@@ -265,7 +296,6 @@ fn parse_extracted_bytes(bytes: &[u8]) -> Result<String, Box<dyn Error>> {
         }
     }
 
-    // Parse length (terminated by ':' after magic header)
     let mut len_end = start_pos;
     while len_end < bytes.len() && bytes[len_end] != b':' {
         len_end += 1;
