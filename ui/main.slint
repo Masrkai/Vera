@@ -32,6 +32,7 @@ component ThemedButton inherits Rectangle {
             font-size: 13px;
             vertical-alignment: center;
             horizontal-alignment: center;
+            overflow: elide;
         }
     }
 
@@ -221,6 +222,7 @@ export component ExifDataManager inherits Window {
     in-out property <image>  preview-source;
     in-out property <image>  maximized-preview-source;
     in-out property <bool>   show-maximized-dialog: false;
+    in-out property <bool>   show-delete-exif-dialog: false;
     in-out property <bool>   has-gps: false;
     in-out property <bool>   preserve-original: false;
     in-out property <bool>   batch-preserve-original: false;
@@ -250,6 +252,7 @@ export component ExifDataManager inherits Window {
     callback delete-exif();
     callback apply-filter(string);
     callback exif-value-edited(int, string);
+    callback exif-tag-deleted(int);
     callback set-theme(int);
     callback steg-embed();
     callback steg-extract();
@@ -417,15 +420,14 @@ export component ExifDataManager inherits Window {
                         HorizontalLayout {
                             spacing: 6px;
                             ThemedCheckBox { text: "Preserve original"; checked <=> root.preserve-original; }
-                            ThemedButton   { text: "Delete EXIF"; enabled: root.has-image; clicked => { root.delete-exif(); } }
                         }
                     }
                 }
 
-                // Sub-mode tab selector: EXIF Metadata vs Steganography & Encryption
+                // Sub-mode tab selector: EXIF Metadata vs Encryption vs Decryption
                 Rectangle {
                     height: 32px;
-                    width: 320px;
+                    width: 420px;
                     background: root.surface-color;
                     border-radius: 4px;
                     border-width: 1px;
@@ -457,7 +459,7 @@ export component ExifDataManager inherits Window {
                             border-radius: 3px;
                             background: root.single-sub-mode == 1 ? root.accent-color : transparent;
                             Text {
-                                text: "Steganography";
+                                text: "Encryption";
                                 color: root.single-sub-mode == 1 ? #ffffff : root.text-color;
                                 font-size: 13px;
                                 font-weight: root.single-sub-mode == 1 ? 700 : 400;
@@ -466,6 +468,23 @@ export component ExifDataManager inherits Window {
                             }
                             TouchArea {
                                 clicked => { root.single-sub-mode = 1; }
+                            }
+                        }
+
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            border-radius: 3px;
+                            background: root.single-sub-mode == 2 ? root.accent-color : transparent;
+                            Text {
+                                text: "Decryption";
+                                color: root.single-sub-mode == 2 ? #ffffff : root.text-color;
+                                font-size: 13px;
+                                font-weight: root.single-sub-mode == 2 ? 700 : 400;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            TouchArea {
+                                clicked => { root.single-sub-mode = 2; }
                             }
                         }
                     }
@@ -488,6 +507,34 @@ export component ExifDataManager inherits Window {
                             placeholder-text: "Filter tags…";
                             edited(text) => { root.apply-filter(text); }
                             horizontal-stretch: 1;
+                        }
+                        Rectangle {
+                            height: 30px;
+                            min-width: 90px;
+                            border-radius: 4px;
+                            border-width: 1px;
+                            border-color: !root.has-image ? Theme.border-color : (del-btn-touch.pressed ? #dc2626 : (del-btn-touch.has-hover ? #ef4444 : #991b1b));
+                            background: !root.has-image ? Theme.preview-bg : (del-btn-touch.pressed ? #b91c1c : (del-btn-touch.has-hover ? #dc2626 : #ef4444));
+
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                Text {
+                                    text: "Delete EXIF";
+                                    color: !root.has-image ? Theme.text-muted : #ffffff;
+                                    font-size: 13px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: center;
+                                }
+                            }
+
+                            del-btn-touch := TouchArea {
+                                enabled: root.has-image;
+                                clicked => {
+                                    root.show-delete-exif-dialog = true;
+                                }
+                            }
                         }
                         ThemedButton {
                             text: "Save Changes";
@@ -536,18 +583,43 @@ export component ExifDataManager inherits Window {
                                         width: parent.width;
                                     }
                                 }
+
+                                Rectangle {
+                                    width: 28px;
+                                    height: 28px;
+                                    border-radius: 4px;
+                                    border-width: 1px;
+                                    border-color: del-touch.pressed ? Theme.accent-color : (del-touch.has-hover ? Theme.accent-color : Theme.border-color);
+                                    background: del-touch.pressed ? Theme.accent-color : (del-touch.has-hover ? Theme.preview-bg : Theme.surface-color);
+
+                                    Text {
+                                        text: "✕";
+                                        color: del-touch.pressed ? #ffffff : Theme.text-color;
+                                        font-size: 13px;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                        width: parent.width;
+                                        height: parent.height;
+                                    }
+
+                                    del-touch := TouchArea {
+                                        clicked => {
+                                            root.exif-tag-deleted(idx);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
 
-                // Steganography & Encryption section for Single Image
+                // Encryption section for Single Image
                 if root.single-sub-mode == 1: VerticalLayout {
                     spacing: 8px;
                     vertical-stretch: 1;
 
                     Text {
-                        text: "AES-256 Encryption & Image Steganography";
+                        text: "AES-256 Encryption & Steganography Embedding";
                         font-weight: 700;
                         color: root.text-color;
                     }
@@ -564,7 +636,7 @@ export component ExifDataManager inherits Window {
 
                     HorizontalLayout {
                         spacing: 8px;
-                        Text { text: "Secret Text X:"; color: root.text-color; vertical-alignment: center; width: 100px; }
+                        Text { text: "Secret Text:"; color: root.text-color; vertical-alignment: center; width: 100px; }
                         ThemedLineEdit {
                             text <=> root.steg-secret-text;
                             placeholder-text: "Enter secret message to encrypt and hide…";
@@ -574,7 +646,7 @@ export component ExifDataManager inherits Window {
 
                     HorizontalLayout {
                         spacing: 8px;
-                        Text { text: "Passphrase Y:"; color: root.text-color; vertical-alignment: center; width: 100px; }
+                        Text { text: "Passphrase:"; color: root.text-color; vertical-alignment: center; width: 100px; }
                         ThemedLineEdit {
                             text <=> root.steg-passphrase;
                             placeholder-text: "Enter AES-256 encryption password…";
@@ -590,6 +662,47 @@ export component ExifDataManager inherits Window {
                             enabled: root.has-image;
                             clicked => { root.steg-embed(); }
                         }
+                    }
+
+                    Rectangle {
+                        vertical-stretch: 1;
+                    }
+                }
+
+                // Decryption section for Single Image
+                if root.single-sub-mode == 2: VerticalLayout {
+                    spacing: 8px;
+                    vertical-stretch: 1;
+
+                    Text {
+                        text: "Steganography Extraction & AES-256 Decryption";
+                        font-weight: 700;
+                        color: root.text-color;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Method:"; color: root.text-color; vertical-alignment: center; width: 100px; }
+                        ThemedDropdown {
+                            model: root.steg-method-names;
+                            current-index <=> root.steg-method-index;
+                            horizontal-stretch: 1;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Passphrase:"; color: root.text-color; vertical-alignment: center; width: 100px; }
+                        ThemedLineEdit {
+                            text <=> root.steg-passphrase;
+                            placeholder-text: "Enter AES-256 decryption password…";
+                            horizontal-stretch: 1;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
                         ThemedButton {
                             text: "Extract & Decrypt";
                             enabled: root.has-image;
@@ -597,7 +710,7 @@ export component ExifDataManager inherits Window {
                         }
                     }
 
-                    Text { text: "Decrypted Message / Output Result:"; color: root.text-color; font-weight: 600; }
+                    Text { text: "Extracted Message / Output Result:"; color: root.text-color; font-weight: 600; }
 
                     Rectangle {
                         clip: true;
@@ -606,7 +719,6 @@ export component ExifDataManager inherits Window {
                         border-color: root.border-color;
                         border-radius: 4px;
                         background: root.surface-color;
-                        padding: 8px;
 
                         VerticalLayout {
                             padding: 8px;
@@ -654,8 +766,15 @@ export component ExifDataManager inherits Window {
                             height: 24px;
                             width: parent.width;
                             clip: true;
-                            padding-left: 8px;
-                            Text { text: item; color: root.text-color; vertical-alignment: center; overflow: elide; width: parent.width; }
+                            Text {
+                                text: item;
+                                color: root.text-color;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                x: 8px;
+                                width: parent.width - 16px;
+                                height: parent.height;
+                            }
                         }
                     }
                 }
@@ -676,29 +795,59 @@ export component ExifDataManager inherits Window {
                             height: 24px;
                             width: parent.width;
                             clip: true;
-                            padding-left: 8px;
-                            Text { text: item; color: root.text-color; vertical-alignment: center; overflow: elide; width: parent.width; }
+                            Text {
+                                text: item;
+                                color: root.text-color;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                x: 8px;
+                                width: parent.width - 16px;
+                                height: parent.height;
+                            }
                         }
                     }
                 }
             }
 
             // ── Status bar ────────────────────────────────────────────
-            HorizontalLayout {
-                spacing: 8px;
-                height: 20px;
-                Text { text: root.status-message; color: root.text-color; vertical-alignment: center; font-size: max(root.min-font-size, 11px); }
+            Rectangle {
+                height: 32px;
+                border-width: 1px;
+                border-color: root.border-color;
+                border-radius: 4px;
+                background: root.surface-color;
 
-                if root.batch-progress > 0.0 && root.batch-progress < 1.0: Rectangle {
-                    height: 14px;
-                    background: root.border-color;
-                    border-radius: 7px;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 8px;
+                    alignment: space-between;
+
                     Rectangle {
-                        x: 0;
-                        width: parent.width * root.batch-progress;
-                        height: parent.height;
-                        background: root.accent-color;
+                        horizontal-stretch: 1;
+                        TextInput {
+                            text <=> root.status-message;
+                            color: root.text-color;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                            read-only: true;
+                            width: parent.width;
+                            height: parent.height;
+                        }
+                    }
+
+                    if root.batch-progress > 0.0 && root.batch-progress < 1.0: Rectangle {
+                        width: 120px;
+                        height: 14px;
+                        background: root.border-color;
                         border-radius: 7px;
+                        Rectangle {
+                            x: 0;
+                            width: parent.width * root.batch-progress;
+                            height: parent.height;
+                            background: root.accent-color;
+                            border-radius: 7px;
+                        }
                     }
                 }
             }
@@ -761,6 +910,92 @@ export component ExifDataManager inherits Window {
                         width: parent.width;
                         height: parent.height;
                         image-fit: contain;
+                    }
+                }
+            }
+        }
+    }
+
+    // Modal popup dialog for delete EXIF confirmation
+    if root.show-delete-exif-dialog: Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #000a;
+        z: 100;
+
+        TouchArea {
+            clicked => {
+                root.show-delete-exif-dialog = false;
+            }
+        }
+
+        Rectangle {
+            width: 400px;
+            height: 180px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: root.surface-color;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: root.border-color;
+            clip: true;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 16px;
+
+                Text {
+                    text: "Confirm Delete EXIF";
+                    font-weight: 700;
+                    color: root.text-color;
+                    font-size: 16px;
+                }
+
+                Text {
+                    text: "Are you sure you want to delete all EXIF metadata from this image? This action cannot be undone.";
+                    color: root.text-muted;
+                    font-size: 13px;
+                    wrap: word-wrap;
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 10px;
+
+                    ThemedButton {
+                        text: "Cancel";
+                        clicked => {
+                            root.show-delete-exif-dialog = false;
+                        }
+                    }
+
+                    Rectangle {
+                        height: 30px;
+                        min-width: 80px;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: confirm-touch.pressed ? #b91c1c : #ef4444;
+                        background: confirm-touch.pressed ? #991b1c : #ef4444;
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            Text {
+                                text: "Delete";
+                                color: #ffffff;
+                                font-size: 13px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                                horizontal-alignment: center;
+                            }
+                        }
+
+                        confirm-touch := TouchArea {
+                            clicked => {
+                                root.show-delete-exif-dialog = false;
+                                root.delete-exif();
+                            }
+                        }
                     }
                 }
             }

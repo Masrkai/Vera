@@ -79,7 +79,7 @@ pub struct ExifBridge {
     current_path: String,
     batch_files: Vec<String>,
     all_exif_rows: Vec<ExifRow>,
-    exif_edits: std::collections::HashMap<String, String>,
+    exif_edits: std::collections::HashMap<String, ExifValue>,
 }
 
 impl ExifBridge {
@@ -172,6 +172,14 @@ impl ExifBridge {
                 b.lock()
                     .unwrap()
                     .exif_value_edited(index as usize, new_value.to_string());
+            });
+        }
+        {
+            let b = bridge.clone();
+            ui.on_exif_tag_deleted(move |index| {
+                b.lock()
+                    .unwrap()
+                    .exif_tag_deleted(index as usize);
             });
         }
         {
@@ -387,17 +395,36 @@ impl ExifBridge {
 
     // ── Editing ────────────────────────────────────────────────────────
     fn exif_value_edited(&mut self, index: usize, new_value: String) {
-        if index < self.all_exif_rows.len() {
-            let tag = self.all_exif_rows[index].tag.to_string();
-            self.exif_edits.insert(tag, new_value.replace('\0', ""));
+        let model = self.ui().get_exif_model();
+        if let Some(row) = model.row_data(index) {
+            let tag = row.tag.to_string();
+            self.exif_edits.insert(tag, ExifValue::Plain(new_value.replace('\0', "")));
+        }
+    }
+
+    fn exif_tag_deleted(&mut self, index: usize) {
+        let model = self.ui().get_exif_model();
+        if let Some(row) = model.row_data(index) {
+            let tag = row.tag.to_string();
+            self.exif_edits.insert(tag, ExifValue::Delete);
+            let rows = self.overlay_edits(&self.all_exif_rows);
+            self.ui().set_exif_model(ModelRc::new(VecModel::from(rows)));
         }
     }
 
     fn overlay_edits(&self, rows: &[ExifRow]) -> Vec<ExifRow> {
         rows.iter()
+            .filter(|row| {
+                let tag = row.tag.to_string();
+                if let Some(ExifValue::Delete) = self.exif_edits.get(&tag) {
+                    false
+                } else {
+                    true
+                }
+            })
             .map(|row| {
                 let tag = row.tag.to_string();
-                if let Some(edited_val) = self.exif_edits.get(&tag) {
+                if let Some(ExifValue::Plain(edited_val)) = self.exif_edits.get(&tag) {
                     ExifRow {
                         tag: row.tag.clone(),
                         value: edited_val.clone().into(),
@@ -444,10 +471,7 @@ impl ExifBridge {
                 }
             };
 
-            let exif_data: std::collections::HashMap<String, ExifValue> = edits
-                .into_iter()
-                .map(|(k, v)| (k, ExifValue::Plain(v)))
-                .collect();
+            let exif_data = edits;
 
             match processor.edit(&exif_data, preserve) {
                 Ok(result) => {
@@ -770,12 +794,10 @@ impl ExifBridge {
         };
 
         match StegProcessor::embed(&path, &output_path, &ciphertext, method) {
-            Ok(()) => {
-                let msg = format!("Successfully embedded ciphertext using {} into {}", method.name(), output_path);
+            Ok(saved_path) => {
+                let msg = format!("Successfully embedded ciphertext using {} into {}", method.name(), saved_path);
                 this.lock().unwrap().set_status(&msg);
-                if preserve {
-                    ExifBridge::load_image(this, output_path);
-                }
+                ExifBridge::load_image(this, saved_path);
             }
             Err(e) => {
                 this.lock().unwrap().set_status(&format!("Embedding error: {}", e));
