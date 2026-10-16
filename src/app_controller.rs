@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use slint::{
-    ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel,
+    ComponentHandle, Model, ModelRc, SharedString, VecModel,
     Weak,
 };
 
@@ -385,7 +385,7 @@ impl ExifBridge {
     }
 
     fn save_exif_changes(this: &Arc<Mutex<Self>>) {
-        let mut guard = this.lock().unwrap();
+        let guard = this.lock().unwrap();
         if guard.current_path.is_empty() {
             guard.set_status("No image loaded");
             return;
@@ -778,7 +778,7 @@ impl ExifBridge {
         let ciphertext = match StegProcessor::extract(&path, method) {
             Ok(ct) => ct,
             Err(e) => {
-                let mut guard = this.lock().unwrap();
+                let guard = this.lock().unwrap();
                 guard.set_status(&format!("Extraction error: {}", e));
                 guard.ui().set_steg_output_text("".into());
                 return;
@@ -792,7 +792,7 @@ impl ExifBridge {
                 guard.set_status("Successfully extracted and decrypted secret message!");
             }
             Err(e) => {
-                let mut guard = this.lock().unwrap();
+                let guard = this.lock().unwrap();
                 guard.set_status(&format!("Decryption error: {}", e));
                 guard.ui().set_steg_output_text("".into());
             }

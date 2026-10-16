@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fs;
 use image::{GenericImageView, ImageReader};
 
-use crate::processing::exiv2_backend::{EXIFProcessor, ExifValue};
+use crate::processing::exiv2_backend::EXIFProcessor;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StegMethod {
